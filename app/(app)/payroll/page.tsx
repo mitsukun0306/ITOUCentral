@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getSetting, computePayroll } from "@/lib/payroll";
+import { getSetting, computePayroll, memberMonthlyPayout } from "@/lib/payroll";
 import { AdminPayroll } from "./AdminPayroll";
 import { MemberPayroll } from "./MemberPayroll";
 
@@ -63,15 +63,22 @@ export default async function PayrollPage({
     where: { userId_year_month: { userId: user.id, year, month } },
   });
   const method = saved?.method ?? setting.defaultPayrollMethod;
-  const { amount, tasks } = await computePayroll(user.id, year, month, method);
+  // 表示額は未確定なら最新のタスク・支給月から再計算(支給月変更に追従)
+  const payout = await memberMonthlyPayout(
+    user.id,
+    year,
+    month,
+    setting.defaultPayrollMethod,
+  );
+  const { tasks } = await computePayroll(user.id, year, month, method);
 
   return (
     <MemberPayroll
       year={year}
       month={month}
       method={method}
-      amount={saved?.amount ?? amount}
-      status={saved?.status ?? null}
+      amount={payout.amount}
+      status={payout.status}
       note={saved?.note ?? null}
       tasks={tasks.map((t) => ({
         id: t.id,

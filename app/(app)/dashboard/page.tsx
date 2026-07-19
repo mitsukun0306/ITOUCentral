@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getSetting, computePayroll, PAYROLL_METHOD_LABEL } from "@/lib/payroll";
+import {
+  getSetting,
+  computePayroll,
+  memberMonthlyPayout,
+  PAYROLL_METHOD_LABEL,
+} from "@/lib/payroll";
 import { yen, formatDate } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
 
@@ -48,20 +53,17 @@ export default async function DashboardPage() {
   let thisMonthAmount = myMonthly.amount;
   let thisMonthStatus: string | null = null;
   if (!isAdmin) {
-    const [agg, savedThisMonth] = await Promise.all([
+    const [agg, payout] = await Promise.all([
       prisma.payroll.aggregate({
         where: { userId: user.id, status: "CONFIRMED", year },
         _sum: { amount: true },
       }),
-      prisma.payroll.findUnique({
-        where: { userId_year_month: { userId: user.id, year, month } },
-      }),
+      // 未確定は最新のタスク・支給月から再計算(支給月変更に追従)
+      memberMonthlyPayout(user.id, year, month, setting.defaultPayrollMethod),
     ]);
     confirmedYearTotal = agg._sum.amount ?? 0;
-    if (savedThisMonth) {
-      thisMonthAmount = savedThisMonth.amount;
-      thisMonthStatus = savedThisMonth.status;
-    }
+    thisMonthAmount = payout.amount;
+    thisMonthStatus = payout.status;
   }
 
   return (
