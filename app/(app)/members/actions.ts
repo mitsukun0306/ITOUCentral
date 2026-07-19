@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser, hashPassword } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 
 async function requireAdmin() {
   const user = await requireUser();
@@ -24,7 +25,7 @@ export async function createMember(
   _prev: MemberFormState,
   formData: FormData,
 ): Promise<MemberFormState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = createSchema.safeParse({
     name: formData.get("name"),
     email: formData.get("email"),
@@ -48,6 +49,11 @@ export async function createMember(
       role: parsed.data.role,
     },
   });
+  await logAudit(
+    admin,
+    "メンバー追加",
+    `${parsed.data.name}(${parsed.data.role === "ADMIN" ? "管理者" : "メンバー"})`,
+  );
   revalidatePath("/members");
   return { ok: true };
 }
@@ -61,6 +67,11 @@ export async function toggleActive(userId: string) {
     where: { id: userId },
     data: { active: !user.active },
   });
+  await logAudit(
+    admin,
+    user.active ? "メンバーを無効化" : "メンバーを有効化",
+    user.name,
+  );
   revalidatePath("/members");
 }
 
@@ -73,7 +84,7 @@ export async function resetPassword(
   _prev: MemberFormState,
   formData: FormData,
 ): Promise<MemberFormState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = resetSchema.safeParse({
     id: formData.get("id"),
     password: formData.get("password"),
@@ -81,10 +92,12 @@ export async function resetPassword(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "入力エラー" };
   }
+  const target = await prisma.user.findUnique({ where: { id: parsed.data.id } });
   await prisma.user.update({
     where: { id: parsed.data.id },
     data: { passwordHash: await hashPassword(parsed.data.password) },
   });
+  await logAudit(admin, "パスワード再設定", target?.name);
   revalidatePath("/members");
   return { ok: true };
 }

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 import { breakForTimes } from "@/lib/attendance";
 
 /** その日の0時(ローカル)を返す */
@@ -35,6 +36,7 @@ export async function clockIn() {
     update: { clockIn: now, breakMin },
     create: { userId: user.id, workDate, clockIn: now, breakMin },
   });
+  await logAudit(user, "出勤打刻");
   revalidateAll();
 }
 
@@ -51,6 +53,7 @@ export async function clockOut() {
     update: { clockOut: now, breakMin },
     create: { userId: user.id, workDate, clockOut: now, breakMin },
   });
+  await logAudit(user, "退勤打刻");
   revalidateAll();
 }
 
@@ -131,6 +134,7 @@ export async function editAttendance(
         reqAt: null,
       },
     });
+    await logAudit(user, "勤怠編集", rec.workDate.toLocaleDateString("ja-JP"));
     revalidateAll();
     return { ok: true };
   }
@@ -146,13 +150,18 @@ export async function editAttendance(
       reqAt: new Date(),
     },
   });
+  await logAudit(
+    user,
+    "勤怠変更申請",
+    rec.workDate.toLocaleDateString("ja-JP"),
+  );
   revalidateAll();
   return { ok: true, requested: true };
 }
 
 /** 管理者: メンバーの変更申請を承認(申請内容を反映) */
 export async function approveAttendanceEdit(id: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const rec = await prisma.attendance.findUnique({ where: { id } });
   if (!rec) throw new Error("記録が見つかりません");
   if (!rec.editRequested) throw new Error("申請がありません");
@@ -171,12 +180,18 @@ export async function approveAttendanceEdit(id: string) {
       reqAt: null,
     },
   });
+  await logAudit(
+    admin,
+    "勤怠変更を承認",
+    rec.workDate.toLocaleDateString("ja-JP"),
+  );
   revalidateAll();
 }
 
 /** 管理者: 変更申請を却下(申請内容を破棄) */
 export async function rejectAttendanceEdit(id: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  const rec = await prisma.attendance.findUnique({ where: { id } });
   await prisma.attendance.update({
     where: { id },
     data: {
@@ -187,6 +202,11 @@ export async function rejectAttendanceEdit(id: string) {
       reqAt: null,
     },
   });
+  await logAudit(
+    admin,
+    "勤怠変更を却下",
+    rec?.workDate.toLocaleDateString("ja-JP"),
+  );
   revalidateAll();
 }
 
@@ -204,7 +224,7 @@ export async function createAttendance(
   _prev: AttendanceFormState,
   formData: FormData,
 ): Promise<AttendanceFormState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const rawBreak = formData.get("breakMin");
   const parsed = createSchema.safeParse({
     userId: formData.get("userId"),
@@ -247,13 +267,20 @@ export async function createAttendance(
       note: d.note ?? null,
     },
   });
+  await logAudit(admin, "勤怠追加", d.workDate);
   revalidateAll();
   return { ok: true };
 }
 
 /** 管理者: 勤怠記録を削除 */
 export async function deleteAttendance(id: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  const rec = await prisma.attendance.findUnique({ where: { id } });
   await prisma.attendance.delete({ where: { id } });
+  await logAudit(
+    admin,
+    "勤怠削除",
+    rec?.workDate.toLocaleDateString("ja-JP"),
+  );
   revalidateAll();
 }

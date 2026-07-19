@@ -46,7 +46,11 @@ export function AdminPayroll({
   const [, startTransition] = useTransition();
 
   const total = rows.reduce(
-    (s, r) => s + (r.savedAmount ?? r.computedAmount),
+    (s, r) =>
+      s +
+      (r.status === "CONFIRMED"
+        ? (r.savedAmount ?? r.computedAmount)
+        : r.computedAmount),
     0,
   );
 
@@ -107,8 +111,11 @@ export function AdminPayroll({
             </thead>
             <tbody>
               {rows.map((r) => {
-                const amount = r.savedAmount ?? r.computedAmount;
                 const confirmed = r.status === "CONFIRMED";
+                // 確定済みは保存額、未確定は常に最新のプレビュー額(食事補助込み)
+                const amount = confirmed
+                  ? (r.savedAmount ?? r.computedAmount)
+                  : r.computedAmount;
                 return (
                   <tr key={r.userId} className="border-b border-gray-50">
                     <td className="px-4 py-2 font-medium">{r.name}</td>

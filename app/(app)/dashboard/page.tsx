@@ -9,6 +9,7 @@ import {
 } from "@/lib/payroll";
 import { yen, formatDate } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
+import { RankBadge } from "@/components/RankBadge";
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -36,13 +37,13 @@ export default async function DashboardPage() {
     include: { assignee: { select: { name: true } } },
   });
 
-  // 管理者向け: 今月の見込み総額
+  // 管理者向け: 今月の見込み総額(食事補助込み)
   let orgMonthlyTotal = 0;
   if (isAdmin) {
     const members = await prisma.user.findMany({ where: { active: true } });
     const results = await Promise.all(
       members.map((m) =>
-        computePayroll(m.id, year, month, setting.defaultPayrollMethod),
+        memberMonthlyPayout(m.id, year, month, setting.defaultPayrollMethod),
       ),
     );
     orgMonthlyTotal = results.reduce((s, r) => s + r.amount, 0);
@@ -79,7 +80,12 @@ export default async function DashboardPage() {
         <div className="bg-brand text-white rounded-2xl p-6 md:p-8 shadow-sm">
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
             <div>
-              <p className="text-sm text-white/80">確定済報酬実績({year}年)</p>
+              <div className="flex items-center gap-3">
+                <p className="text-sm text-white/80">
+                  確定済報酬実績({year}年)
+                </p>
+                <RankBadge amount={confirmedYearTotal} size="sm" />
+              </div>
               <p className="text-4xl md:text-5xl font-bold mt-1 tracking-tight">
                 {yen(confirmedYearTotal)}
               </p>

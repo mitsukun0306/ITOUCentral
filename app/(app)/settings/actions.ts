@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 
 const schema = z.object({
   companyName: z.string().min(1, "組織名は必須です"),
@@ -36,6 +37,7 @@ export async function updateSetting(
     update: parsed.data,
     create: { id: 1, ...parsed.data },
   });
+  await logAudit(user, "設定を変更", parsed.data.companyName);
   revalidatePath("/settings");
   revalidatePath("/dashboard");
   revalidatePath("/payroll");

@@ -1,6 +1,11 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getSetting, computePayroll, memberMonthlyPayout } from "@/lib/payroll";
+import {
+  getSetting,
+  computePayroll,
+  memberMonthlyPayout,
+  mealAllowanceForMonth,
+} from "@/lib/payroll";
 import { AdminPayroll } from "./AdminPayroll";
 import { MemberPayroll } from "./MemberPayroll";
 
@@ -29,12 +34,13 @@ export default async function PayrollPage({
         });
         // 保存済みならその方式、なければ現在の既定方式でプレビュー計算
         const method = saved?.method ?? setting.defaultPayrollMethod;
-        const { amount: computed } = await computePayroll(
-          m.id,
-          year,
-          month,
-          method,
-        );
+        const { amount: base } = await computePayroll(m.id, year, month, method);
+        // タスクベース方式は食事補助を上乗せしてプレビュー
+        const { allowance: meal } =
+          method === "MONTHLY_MANUAL"
+            ? { allowance: 0 }
+            : await mealAllowanceForMonth(m.id, year, month);
+        const computed = base + meal;
         return {
           userId: m.id,
           name: m.name,

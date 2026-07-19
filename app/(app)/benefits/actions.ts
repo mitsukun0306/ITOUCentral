@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
+import { yen } from "@/lib/format";
 
 async function requireAdmin() {
   const user = await requireUser();
@@ -43,7 +45,7 @@ export async function createRetreatEvent(
   _prev: EventFormState,
   formData: FormData,
 ): Promise<EventFormState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = eventSchema.safeParse({
     title: formData.get("title"),
     description: formData.get("description") || undefined,
@@ -64,13 +66,16 @@ export async function createRetreatEvent(
       endDate: d.endDate ? toDate(d.endDate) : null,
     },
   });
+  await logAudit(admin, "リトリートイベント追加", d.title);
   revalidateAll();
   return { ok: true };
 }
 
 export async function deleteRetreatEvent(id: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  const ev = await prisma.retreatEvent.findUnique({ where: { id } });
   await prisma.retreatEvent.delete({ where: { id } });
+  await logAudit(admin, "リトリートイベント削除", ev?.title);
   revalidateAll();
 }
 
@@ -116,16 +121,23 @@ export async function submitExpense(
       note: d.note ?? null,
     },
   });
+  await logAudit(user, "経費申請", `${d.title} ${yen(d.amount)}`);
   revalidateAll();
   return { ok: true };
 }
 
 async function decideExpense(id: string, status: "APPROVED" | "REJECTED") {
-  await requireAdmin();
-  await prisma.expenseRequest.update({
+  const admin = await requireAdmin();
+  const rec = await prisma.expenseRequest.update({
     where: { id },
     data: { status, decidedAt: new Date() },
+    include: { user: { select: { name: true } } },
   });
+  await logAudit(
+    admin,
+    status === "APPROVED" ? "経費承認" : "経費却下",
+    `${rec.user.name} / ${rec.title} ${yen(rec.amount)}`,
+  );
   revalidateAll();
 }
 
@@ -137,10 +149,13 @@ export async function rejectExpense(id: string) {
   await decideExpense(id, "REJECTED");
 }
 
-/** 申請の取消(本人の未承認のみ)/ 管理者は任意に削除可 */
+/** 申請の取消/削除。本人は未承認のみ、管理者は任意に削除可。 */
 export async function deleteExpense(id: string) {
   const user = await requireUser();
-  const rec = await prisma.expenseRequest.findUnique({ where: { id } });
+  const rec = await prisma.expenseRequest.findUnique({
+    where: { id },
+    include: { user: { select: { name: true } } },
+  });
   if (!rec) throw new Error("申請が見つかりません");
   const isAdmin = user.role === "ADMIN";
   if (!isAdmin) {
@@ -150,5 +165,68 @@ export async function deleteExpense(id: string) {
     }
   }
   await prisma.expenseRequest.delete({ where: { id } });
+  await logAudit(
+    user,
+    isAdmin ? "経費申請の削除(管理者)" : "経費申請の取消",
+    `${rec.user.name} / ${rec.title}`,
+  );
   revalidateAll();
+}
+
+// ---------- 食事補助 ----------
+
+const mealSchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日付を入力してください"),
+  amount: z.coerce.number().int().min(1, "金額を入力してください"),
+  item: z.string().min(1, "食べたものを入力してください"),
+  place: z.string().min(1, "場所を入力してください"),
+});
+
+export type MealFormState = { error?: string; ok?: boolean };
+
+/** 食事補助の記録を申請(1日1件相当。日々追加していく) */
+export async function submitMeal(
+  _prev: MealFormState,
+  formData: FormData,
+): Promise<MealFormState> {
+  const user = await requireUser();
+  const parsed = mealSchema.safeParse({
+    date: formData.get("date"),
+    amount: formData.get("amount"),
+    item: formData.get("item"),
+    place: formData.get("place"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "入力エラー" };
+  }
+  const d = parsed.data;
+  await prisma.mealRecord.create({
+    data: {
+      userId: user.id,
+      date: toDate(d.date),
+      amount: d.amount,
+      item: d.item,
+      place: d.place,
+    },
+  });
+  await logAudit(user, "食事補助の申請", `${d.item} ${yen(d.amount)}`);
+  revalidatePath("/benefits");
+  revalidatePath("/dashboard");
+  revalidatePath("/payroll");
+  return { ok: true };
+}
+
+/** 食事記録の削除(本人 or 管理者) */
+export async function deleteMeal(id: string) {
+  const user = await requireUser();
+  const rec = await prisma.mealRecord.findUnique({ where: { id } });
+  if (!rec) throw new Error("記録が見つかりません");
+  if (user.role !== "ADMIN" && rec.userId !== user.id) {
+    throw new Error("権限がありません");
+  }
+  await prisma.mealRecord.delete({ where: { id } });
+  await logAudit(user, "食事補助の削除", rec.item);
+  revalidatePath("/benefits");
+  revalidatePath("/dashboard");
+  revalidatePath("/payroll");
 }

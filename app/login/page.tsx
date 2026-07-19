@@ -1,11 +1,10 @@
-import { redirect } from "next/navigation";
-import { getSessionUser } from "@/lib/auth";
 import { LoginForm } from "./LoginForm";
 
-export default async function LoginPage() {
-  const user = await getSessionUser();
-  if (user) redirect("/dashboard");
-
+// 注: ここでサーバー側リダイレクトはしない。
+// Server Action 完了時の再レンダリングでリダイレクトが発火すると、
+// ログイン成功後の名言アニメーションが表示される前に遷移してしまうため。
+// ログイン済みユーザーの振り分けはトップページ(app/page.tsx)が担う。
+export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-sm">

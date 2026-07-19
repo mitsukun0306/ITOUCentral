@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { computePayroll } from "@/lib/payroll";
+import { computePayroll, mealAllowanceForMonth } from "@/lib/payroll";
+import { logAudit } from "@/lib/audit";
 import type { PayrollMethod } from "@/lib/generated/prisma";
 
 async function requireAdmin() {
@@ -25,7 +26,7 @@ const genSchema = z.object({
  * MONTHLY_MANUAL では自動額は 0 のまま(手入力運用)。
  */
 export async function generatePayroll(formData: FormData) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = genSchema.safeParse({
     year: formData.get("year"),
     month: formData.get("month"),
@@ -62,6 +63,7 @@ export async function generatePayroll(formData: FormData) {
     });
   }
 
+  await logAudit(admin, "給与を計算・保存", `${year}年${month}月`);
   revalidatePath("/payroll");
   revalidatePath("/dashboard");
 }
@@ -79,7 +81,7 @@ export async function setPayrollAmount(
   _prev: ManualState,
   formData: FormData,
 ): Promise<ManualState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const parsed = manualSchema.safeParse({
     id: formData.get("id"),
     amount: formData.get("amount"),
@@ -98,24 +100,62 @@ export async function setPayrollAmount(
     where: { id: parsed.data.id },
     data: { amount: parsed.data.amount, note: parsed.data.note ?? null },
   });
+  await logAudit(
+    admin,
+    "給与額を編集",
+    `${rec.year}年${rec.month}月 → ¥${parsed.data.amount.toLocaleString("ja-JP")}`,
+  );
   revalidatePath("/payroll");
   return { ok: true };
 }
 
 export async function confirmPayroll(id: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  const rec = await prisma.payroll.findUnique({ where: { id } });
+  if (!rec) throw new Error("記録が見つかりません");
+
+  // 確定時に、タスクベース方式は最新の金額+食事補助を凍結する。
+  // 手入力方式は入力額をそのまま確定。
+  let amount = rec.amount;
+  if (rec.method !== "MONTHLY_MANUAL") {
+    const { amount: base } = await computePayroll(
+      rec.userId,
+      rec.year,
+      rec.month,
+      rec.method,
+    );
+    const { allowance } = await mealAllowanceForMonth(
+      rec.userId,
+      rec.year,
+      rec.month,
+    );
+    amount = base + allowance;
+  }
+
   await prisma.payroll.update({
     where: { id },
-    data: { status: "CONFIRMED", confirmedAt: new Date() },
+    data: { status: "CONFIRMED", confirmedAt: new Date(), amount },
   });
+  await logAudit(
+    admin,
+    "給与を確定",
+    `${rec.year}年${rec.month}月 ¥${amount.toLocaleString("ja-JP")}`,
+  );
   revalidatePath("/payroll");
+  revalidatePath("/dashboard");
 }
 
 export async function unconfirmPayroll(id: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  const rec = await prisma.payroll.findUnique({ where: { id } });
   await prisma.payroll.update({
     where: { id },
     data: { status: "DRAFT", confirmedAt: null },
   });
+  await logAudit(
+    admin,
+    "給与の確定を解除",
+    rec ? `${rec.year}年${rec.month}月` : undefined,
+  );
   revalidatePath("/payroll");
 }

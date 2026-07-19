@@ -55,6 +55,7 @@ model User {
   attendances Attendance[]
   payrolls    Payroll[]
   expenses    ExpenseRequest[]
+  meals       MealRecord[]
 }
 
 /// タスク(成果報酬の元データ)
@@ -150,6 +151,32 @@ model RetreatEvent {
   updatedAt   DateTime  @updatedAt
 
   @@index([startDate])
+}
+
+/// 福利厚生: 食事補助の記録(メンバーが日々申請)
+model MealRecord {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime // 食事日
+  amount    Int      @default(0) // 食費(円)
+  item      String // 食べたもの
+  place     String // 食べた場所
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+/// 操作ログ(監査用)
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actorName String // 実行者名のスナップショット
+  action    String // 操作の種別(例: タスク作成)
+  detail    String? // 補足
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 /// 福利厚生: 経費申請(メンバーが申請 → 管理者が承認/却下)

@@ -4,7 +4,15 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 import type { TaskStatus } from "@/lib/generated/prisma";
+
+const STATUS_LABEL: Record<TaskStatus, string> = {
+  TODO: "未着手",
+  IN_PROGRESS: "進行中",
+  REVIEW: "完了申請中",
+  DONE: "完了",
+};
 
 const upsertSchema = z.object({
   id: z.string().optional(),
@@ -35,7 +43,7 @@ export async function upsertTask(
   _prev: TaskFormState,
   formData: FormData,
 ): Promise<TaskFormState> {
-  await requireAdmin();
+  const admin = await requireAdmin();
 
   const parsed = upsertSchema.safeParse({
     id: formData.get("id") || undefined,
@@ -91,8 +99,10 @@ export async function upsertTask(
 
   if (d.id) {
     await prisma.task.update({ where: { id: d.id }, data });
+    await logAudit(admin, "タスク更新", d.title);
   } else {
     await prisma.task.create({ data });
+    await logAudit(admin, "タスク作成", d.title);
   }
 
   revalidatePath("/tasks");
@@ -123,14 +133,21 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus) {
     where: { id: taskId },
     data: { status, completedAt },
   });
+  await logAudit(
+    user,
+    status === "REVIEW" ? "タスク完了申請" : "タスク状態変更",
+    `${task.title} → ${STATUS_LABEL[status]}`,
+  );
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
   revalidatePath("/notifications");
 }
 
 export async function deleteTask(taskId: string) {
-  await requireAdmin();
+  const admin = await requireAdmin();
+  const task = await prisma.task.findUnique({ where: { id: taskId } });
   await prisma.task.delete({ where: { id: taskId } });
+  await logAudit(admin, "タスク削除", task?.title);
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
   revalidatePath("/notifications");

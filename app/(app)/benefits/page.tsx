@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { mealAllowanceForMonth, monthRange } from "@/lib/payroll";
 import { BenefitsPanel } from "./BenefitsPanel";
 
 export default async function BenefitsPage() {
@@ -8,6 +9,16 @@ export default async function BenefitsPage() {
 
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  // 食事補助: 当月の自分の記録と補助情報
+  const [mealStart, mealEnd] = monthRange(year, month);
+  const meals = await prisma.mealRecord.findMany({
+    where: { userId: user.id, date: { gte: mealStart, lt: mealEnd } },
+    orderBy: { date: "desc" },
+  });
+  const mealInfo = await mealAllowanceForMonth(user.id, year, month);
 
   // イベントは今日以降を優先しつつ全件(過去も見えるように昇順)
   const events = await prisma.retreatEvent.findMany({
@@ -43,6 +54,16 @@ export default async function BenefitsPage() {
         status: x.status,
         createdAt: x.createdAt.toISOString(),
       }))}
+      year={year}
+      month={month}
+      meals={meals.map((m) => ({
+        id: m.id,
+        date: m.date.toISOString(),
+        amount: m.amount,
+        item: m.item,
+        place: m.place,
+      }))}
+      mealInfo={mealInfo}
     />
   );
 }

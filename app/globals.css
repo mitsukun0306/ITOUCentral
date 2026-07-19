@@ -107,3 +107,21 @@ body {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* ===== ランクバッジ(レインボーの流れる演出) ===== */
+.rank-rainbow {
+  animation: rank-shift 6s linear infinite;
+}
+@keyframes rank-shift {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 300% 50%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rank-rainbow {
+    animation: none;
+  }
+}

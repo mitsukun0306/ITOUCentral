@@ -3,6 +3,7 @@
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { createSession, verifyPassword } from "@/lib/auth";
+import { logAudit } from "@/lib/audit";
 
 const schema = z.object({
   email: z.string().email("メールアドレスの形式が正しくありません"),
@@ -40,6 +41,7 @@ export async function login(
     email: user.email,
     role: user.role,
   });
+  await logAudit({ id: user.id, name: user.name }, "ログイン");
 
   // リダイレクトはクライアントで演出(名言アニメーション)後に行う
   return { ok: true };

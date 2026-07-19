@@ -8,11 +8,24 @@ import {
   approveExpense,
   rejectExpense,
   deleteExpense,
+  submitMeal,
+  deleteMeal,
   type EventFormState,
   type ExpenseFormState,
+  type MealFormState,
 } from "./actions";
 import { yen, formatDate } from "@/lib/format";
+import { RankBadge } from "@/components/RankBadge";
+import type { MealAllowance } from "@/lib/payroll";
 import type { ExpenseStatus } from "@/lib/generated/prisma";
+
+type MealDTO = {
+  id: string;
+  date: string;
+  amount: number;
+  item: string;
+  place: string;
+};
 
 type EventDTO = {
   id: string;
@@ -49,10 +62,18 @@ export function BenefitsPanel({
   isAdmin,
   events,
   expenses,
+  year,
+  month,
+  meals,
+  mealInfo,
 }: {
   isAdmin: boolean;
   events: EventDTO[];
   expenses: ExpenseDTO[];
+  year: number;
+  month: number;
+  meals: MealDTO[];
+  mealInfo: MealAllowance;
 }) {
   const [showEvent, setShowEvent] = useState(false);
   const [, startTransition] = useTransition();
@@ -152,8 +173,26 @@ export function BenefitsPanel({
               }
               onReject={(id) => startTransition(() => rejectExpense(id))}
               onDelete={(id) => {
-                if (confirm("この申請を取り消しますか?"))
+                if (confirm("この申請を削除しますか?"))
                   startTransition(() => deleteExpense(id));
+              }}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* 食事補助 */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">🍱 食事補助</h2>
+        <MealSummary year={year} month={month} info={mealInfo} />
+        <div className="grid gap-4 lg:grid-cols-3">
+          <MealForm year={year} month={month} />
+          <div className="lg:col-span-2">
+            <MealList
+              meals={meals}
+              onDelete={(id) => {
+                if (confirm("この食事記録を削除しますか?"))
+                  startTransition(() => deleteMeal(id));
               }}
             />
           </div>
@@ -162,6 +201,192 @@ export function BenefitsPanel({
 
       {showEvent && isAdmin && (
         <EventModal onClose={() => setShowEvent(false)} />
+      )}
+    </div>
+  );
+}
+
+function MealSummary({
+  year,
+  month,
+  info,
+}: {
+  year: number;
+  month: number;
+  info: MealAllowance;
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        <div>
+          <p className="text-xs text-gray-500 mb-1">あなたのランク</p>
+          <RankBadge rankKey={info.rankKey} size="sm" />
+        </div>
+        <Metric label={`${month}月の申請日数`} value={`${info.days} 日`} />
+        <Metric label="申請合計" value={yen(info.total)} />
+        <Metric label="月限度額" value={yen(info.limit)} />
+        <div className="ml-auto text-right">
+          <p className="text-xs text-gray-500">今月の食事補助(報酬に加算)</p>
+          <p className="text-2xl font-bold text-brand">
+            {yen(info.allowance)}
+          </p>
+          <p className="text-[11px] mt-0.5">
+            {info.eligible ? (
+              <span className="text-green-600">支給対象(10日以上)</span>
+            ) : (
+              <span className="text-amber-600">
+                あと {Math.max(0, 10 - info.days)} 日で支給対象
+              </span>
+            )}
+          </p>
+        </div>
+      </div>
+      <p className="text-xs text-gray-400 mt-3">
+        月10日以上、食費・食べたもの・場所を申請すると、ランクの限度額内で申請額が報酬に加算されます({year}年{month}月)。
+      </p>
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className="text-lg font-semibold mt-0.5">{value}</p>
+    </div>
+  );
+}
+
+const mealInitial: MealFormState = {};
+
+function MealForm({ year, month }: { year: number; month: number }) {
+  const [state, action, pending] = useActionState(submitMeal, mealInitial);
+  const [formKey, setFormKey] = useState(0);
+  useEffect(() => {
+    if (state.ok) setFormKey((k) => k + 1);
+  }, [state.ok]);
+
+  const defaultDate = `${year}-${String(month).padStart(2, "0")}-${String(
+    new Date().getDate(),
+  ).padStart(2, "0")}`;
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4 h-fit">
+      <h3 className="font-semibold mb-3">食費を申請</h3>
+      <form key={formKey} action={action} className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className="block text-sm font-medium mb-1">
+              日付 <span className="text-red-500">*</span>
+            </span>
+            <input
+              type="date"
+              name="date"
+              defaultValue={defaultDate}
+              required
+              className={inputCls}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-1">
+              金額(円) <span className="text-red-500">*</span>
+            </span>
+            <input
+              type="number"
+              name="amount"
+              min={1}
+              required
+              className={inputCls}
+            />
+          </label>
+        </div>
+        <label className="block">
+          <span className="block text-sm font-medium mb-1">
+            食べたもの <span className="text-red-500">*</span>
+          </span>
+          <input
+            name="item"
+            required
+            placeholder="例: 定食ランチ"
+            className={inputCls}
+          />
+        </label>
+        <label className="block">
+          <span className="block text-sm font-medium mb-1">
+            場所 <span className="text-red-500">*</span>
+          </span>
+          <input
+            name="place"
+            required
+            placeholder="例: 〇〇食堂"
+            className={inputCls}
+          />
+        </label>
+        {state.error && (
+          <p className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+            {state.error}
+          </p>
+        )}
+        {state.ok && (
+          <p className="text-sm text-green-700 bg-green-50 rounded-md px-3 py-2">
+            申請しました。
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={pending}
+          className="w-full rounded-lg bg-brand text-white py-2 text-sm font-medium hover:bg-brand-dark disabled:opacity-60"
+        >
+          {pending ? "申請中..." : "申請する"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function MealList({
+  meals,
+  onDelete,
+}: {
+  meals: MealDTO[];
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-100">
+        <h3 className="font-semibold">今月の食事記録</h3>
+      </div>
+      {meals.length === 0 ? (
+        <p className="px-4 py-8 text-center text-sm text-gray-400">
+          まだ記録がありません
+        </p>
+      ) : (
+        <ul className="divide-y divide-gray-100">
+          {meals.map((m) => (
+            <li
+              key={m.id}
+              className="px-4 py-2.5 flex items-center justify-between gap-3"
+            >
+              <div className="min-w-0">
+                <p className="font-medium truncate">
+                  {m.item}
+                  <span className="ml-2 font-semibold text-brand">
+                    {yen(m.amount)}
+                  </span>
+                </p>
+                <p className="text-xs text-gray-400">
+                  {formatDate(m.date)} ・ {m.place}
+                </p>
+              </div>
+              <button
+                onClick={() => onDelete(m.id)}
+                className="text-red-500 text-xs hover:underline shrink-0"
+              >
+                削除
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -397,6 +622,14 @@ function ExpenseList({
                           却下
                         </button>
                       </div>
+                    )}
+                    {isAdmin && (
+                      <button
+                        onClick={() => onDelete(x.id)}
+                        className="text-red-500 text-xs hover:underline"
+                      >
+                        削除
+                      </button>
                     )}
                     {!isAdmin && x.status === "PENDING" && (
                       <button

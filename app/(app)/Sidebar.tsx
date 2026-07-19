@@ -17,6 +17,7 @@ const nav = [
 
 const adminNav = [
   { href: "/members", label: "メンバー管理", icon: "👤" },
+  { href: "/audit", label: "監査", icon: "📋" },
   { href: "/settings", label: "設定", icon: "⚙" },
 ];
 
