@@ -45,7 +45,12 @@ export async function computePayroll(
     where: {
       assigneeId: userId,
       status: "DONE",
-      completedAt: { gte: start, lt: end },
+      OR: [
+        // 支給月が明示指定されたタスク
+        { payoutYear: year, payoutMonth: month },
+        // 支給月未指定のタスクは完了月で計上
+        { payoutMonth: null, completedAt: { gte: start, lt: end } },
+      ],
     },
     orderBy: { completedAt: "asc" },
   });

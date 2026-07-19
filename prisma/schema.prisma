@@ -65,6 +65,10 @@ model Task {
   unitPrice   Int @default(0) // 単価(円)
   quantity    Int @default(0) // 成果量
 
+  // 支給月(管理者が指定。未指定なら完了月に計上)
+  payoutYear  Int?
+  payoutMonth Int?
+
   dueDate     DateTime?
   completedAt DateTime?
   createdAt   DateTime  @default(now())
@@ -72,6 +76,7 @@ model Task {
 
   @@index([assigneeId])
   @@index([status])
+  @@index([payoutYear, payoutMonth])
 }
 
 /// 勤怠

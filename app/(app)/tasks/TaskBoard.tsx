@@ -21,6 +21,8 @@ type TaskDTO = {
   fixedReward: number;
   unitPrice: number;
   quantity: number;
+  payoutYear: number | null;
+  payoutMonth: number | null;
   dueDate: string | null;
 };
 
@@ -177,6 +179,11 @@ export function TaskBoard({
                         </span>
                       )}
                       {t.dueDate && <span>期限: {formatDate(t.dueDate)}</span>}
+                      {t.payoutYear && t.payoutMonth && (
+                        <span className="text-brand">
+                          支給月: {t.payoutYear}/{t.payoutMonth}
+                        </span>
+                      )}
                     </div>
 
                     {canEditStatus(t) && (
@@ -253,6 +260,26 @@ function TaskFormModal({
   onClose: () => void;
 }) {
   const [state, formAction, pending] = useActionState(upsertTask, initialState);
+
+  const [due, setDue] = useState(
+    task?.dueDate ? task.dueDate.slice(0, 10) : "",
+  );
+  const [payout, setPayout] = useState(
+    task?.payoutYear && task?.payoutMonth
+      ? `${task.payoutYear}-${String(task.payoutMonth).padStart(2, "0")}`
+      : "",
+  );
+
+  // 支給月の候補: 期限の月(未設定なら今月)から2ヶ月先まで
+  const base = due
+    ? new Date(Number(due.slice(0, 4)), Number(due.slice(5, 7)) - 1, 1)
+    : new Date();
+  const payoutOptions = Array.from({ length: 3 }, (_, i) => {
+    const d = new Date(base.getFullYear(), base.getMonth() + i, 1);
+    const y = d.getFullYear();
+    const m = d.getMonth() + 1;
+    return { value: `${y}-${String(m).padStart(2, "0")}`, label: `${y}年${m}月` };
+  });
 
   useEffect(() => {
     if (state.ok) onClose();
@@ -355,14 +382,38 @@ function TaskFormModal({
             </div>
           </div>
 
-          <Field label="期限">
-            <input
-              name="dueDate"
-              type="date"
-              defaultValue={task?.dueDate ? task.dueDate.slice(0, 10) : ""}
-              className={inputCls}
-            />
-          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="期限">
+              <input
+                name="dueDate"
+                type="date"
+                value={due}
+                onChange={(e) => setDue(e.target.value)}
+                className={inputCls}
+              />
+            </Field>
+            <Field label="支給月">
+              <select
+                name="payoutMonth"
+                value={payout}
+                onChange={(e) => setPayout(e.target.value)}
+                className={inputCls}
+              >
+                <option value="">自動(完了月に計上)</option>
+                {payoutOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+                {payout && !payoutOptions.some((o) => o.value === payout) && (
+                  <option value={payout}>{payout}(現在の設定)</option>
+                )}
+              </select>
+            </Field>
+          </div>
+          <p className="text-xs text-gray-400 -mt-2">
+            支給月は期限の月から2ヶ月先まで選べます。未指定なら完了した月に計上されます。
+          </p>
 
           {state.error && (
             <p className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">

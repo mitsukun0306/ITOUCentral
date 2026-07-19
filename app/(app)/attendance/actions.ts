@@ -59,7 +59,16 @@ const editSchema = z.object({
   clockIn: z.string().optional(),
   clockOut: z.string().optional(),
   note: z.string().optional(),
+  // 管理者のみ: 休憩を手動指定(未指定なら自動計算)
+  breakMin: z.coerce.number().int().min(0).optional(),
 });
+
+/** "HH:MM" を対象日の DateTime に変換 */
+function timeOnDate(base: Date, hhmm?: string | null): Date | null {
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(":").map(Number);
+  return new Date(base.getFullYear(), base.getMonth(), base.getDate(), h, m);
+}
 
 export type AttendanceFormState = {
   error?: string;
@@ -77,11 +86,13 @@ export async function editAttendance(
   formData: FormData,
 ): Promise<AttendanceFormState> {
   const user = await requireUser();
+  const rawBreak = formData.get("breakMin");
   const parsed = editSchema.safeParse({
     id: formData.get("id"),
     clockIn: formData.get("clockIn") || undefined,
     clockOut: formData.get("clockOut") || undefined,
     note: formData.get("note") || undefined,
+    breakMin: rawBreak !== null && rawBreak !== "" ? rawBreak : undefined,
   });
   if (!parsed.success) return { error: "入力エラー" };
 
@@ -96,24 +107,23 @@ export async function editAttendance(
   }
 
   const base = rec.workDate;
-  const toDateTime = (hhmm?: string): Date | null => {
-    if (!hhmm) return null;
-    const [h, m] = hhmm.split(":").map(Number);
-    return new Date(base.getFullYear(), base.getMonth(), base.getDate(), h, m);
-  };
-  const newIn = toDateTime(parsed.data.clockIn);
-  const newOut = toDateTime(parsed.data.clockOut);
+  const newIn = timeOnDate(base, parsed.data.clockIn);
+  const newOut = timeOnDate(base, parsed.data.clockOut);
   const newNote = parsed.data.note ?? null;
 
   if (isAdmin) {
-    // 即時反映(休憩は自動計算)。申請中だった場合は同時にクリア。
+    // 即時反映。休憩は手動指定があればそれを、なければ自動計算。
+    const breakMin =
+      parsed.data.breakMin !== undefined
+        ? parsed.data.breakMin
+        : breakForTimes(newIn, newOut);
     await prisma.attendance.update({
       where: { id: rec.id },
       data: {
         clockIn: newIn,
         clockOut: newOut,
         note: newNote,
-        breakMin: breakForTimes(newIn, newOut),
+        breakMin,
         editRequested: false,
         reqClockIn: null,
         reqClockOut: null,
@@ -177,5 +187,73 @@ export async function rejectAttendanceEdit(id: string) {
       reqAt: null,
     },
   });
+  revalidateAll();
+}
+
+const createSchema = z.object({
+  userId: z.string().min(1, "対象者を選択してください"),
+  workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日付を入力してください"),
+  clockIn: z.string().optional(),
+  clockOut: z.string().optional(),
+  note: z.string().optional(),
+  breakMin: z.coerce.number().int().min(0).optional(),
+});
+
+/** 管理者: 勤怠記録を新規追加 */
+export async function createAttendance(
+  _prev: AttendanceFormState,
+  formData: FormData,
+): Promise<AttendanceFormState> {
+  await requireAdmin();
+  const rawBreak = formData.get("breakMin");
+  const parsed = createSchema.safeParse({
+    userId: formData.get("userId"),
+    workDate: formData.get("workDate"),
+    clockIn: formData.get("clockIn") || undefined,
+    clockOut: formData.get("clockOut") || undefined,
+    note: formData.get("note") || undefined,
+    breakMin: rawBreak !== null && rawBreak !== "" ? rawBreak : undefined,
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "入力エラー" };
+  }
+
+  const d = parsed.data;
+  const workDate = new Date(
+    Number(d.workDate.slice(0, 4)),
+    Number(d.workDate.slice(5, 7)) - 1,
+    Number(d.workDate.slice(8, 10)),
+  );
+
+  const existing = await prisma.attendance.findUnique({
+    where: { userId_workDate: { userId: d.userId, workDate } },
+  });
+  if (existing) {
+    return { error: "その日の勤怠は既に存在します。編集してください" };
+  }
+
+  const clockIn = timeOnDate(workDate, d.clockIn);
+  const clockOut = timeOnDate(workDate, d.clockOut);
+  const breakMin =
+    d.breakMin !== undefined ? d.breakMin : breakForTimes(clockIn, clockOut);
+
+  await prisma.attendance.create({
+    data: {
+      userId: d.userId,
+      workDate,
+      clockIn,
+      clockOut,
+      breakMin,
+      note: d.note ?? null,
+    },
+  });
+  revalidateAll();
+  return { ok: true };
+}
+
+/** 管理者: 勤怠記録を削除 */
+export async function deleteAttendance(id: string) {
+  await requireAdmin();
+  await prisma.attendance.delete({ where: { id } });
   revalidateAll();
 }

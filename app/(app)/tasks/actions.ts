@@ -16,6 +16,11 @@ const upsertSchema = z.object({
   unitPrice: z.coerce.number().int().min(0).default(0),
   quantity: z.coerce.number().int().min(0).default(0),
   dueDate: z.string().optional(),
+  // 支給月 "YYYY-MM"。空なら完了月に計上。
+  payoutMonth: z
+    .string()
+    .regex(/^\d{4}-\d{2}$/)
+    .optional(),
 });
 
 export type TaskFormState = { error?: string; ok?: boolean };
@@ -42,6 +47,7 @@ export async function upsertTask(
     unitPrice: formData.get("unitPrice") || 0,
     quantity: formData.get("quantity") || 0,
     dueDate: formData.get("dueDate") || undefined,
+    payoutMonth: formData.get("payoutMonth") || undefined,
   });
 
   if (!parsed.success) {
@@ -51,6 +57,14 @@ export async function upsertTask(
   const d = parsed.data;
   const assigneeId = d.assigneeId && d.assigneeId !== "" ? d.assigneeId : null;
   const dueDate = d.dueDate ? new Date(d.dueDate) : null;
+  // 支給月 "YYYY-MM" を分解(未指定なら null)
+  let payoutYear: number | null = null;
+  let payoutMonth: number | null = null;
+  if (d.payoutMonth) {
+    const [py, pm] = d.payoutMonth.split("-").map(Number);
+    payoutYear = py;
+    payoutMonth = pm;
+  }
 
   // 完了状態への変更で completedAt を管理
   const existing = d.id
@@ -69,6 +83,8 @@ export async function upsertTask(
     fixedReward: d.fixedReward,
     unitPrice: d.unitPrice,
     quantity: d.quantity,
+    payoutYear,
+    payoutMonth,
     dueDate,
     completedAt,
   };

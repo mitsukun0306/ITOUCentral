@@ -8,6 +8,8 @@ import {
   editAttendance,
   approveAttendanceEdit,
   rejectAttendanceEdit,
+  createAttendance,
+  deleteAttendance,
   type AttendanceFormState,
 } from "./actions";
 import { formatDate, formatTime, workHours } from "@/lib/format";
@@ -44,6 +46,7 @@ export function AttendancePanel({
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState<Rec | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
   const [, startTransition] = useTransition();
 
   const totalHours = records.reduce(
@@ -62,19 +65,27 @@ export function AttendancePanel({
       <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold">勤怠</h1>
         {isAdmin && (
-          <select
-            value={selectedMember}
-            onChange={(e) =>
-              router.push(`/attendance?member=${e.target.value}`)
-            }
-            className="text-sm border border-gray-300 rounded-lg px-3 py-2"
-          >
-            {members.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              value={selectedMember}
+              onChange={(e) =>
+                router.push(`/attendance?member=${e.target.value}`)
+              }
+              className="text-sm border border-gray-300 rounded-lg px-3 py-2"
+            >
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => setShowAdd(true)}
+              className="rounded-lg bg-brand text-white px-4 py-2 text-sm font-medium hover:bg-brand-dark whitespace-nowrap"
+            >
+              + 勤怠を追加
+            </button>
+          </div>
         )}
       </div>
 
@@ -159,6 +170,10 @@ export function AttendancePanel({
                     onReject={() =>
                       startTransition(() => rejectAttendanceEdit(r.id))
                     }
+                    onDelete={() => {
+                      if (confirm("この勤怠記録を削除しますか?"))
+                        startTransition(() => deleteAttendance(r.id));
+                    }}
                   />
                 ))
               )}
@@ -174,6 +189,13 @@ export function AttendancePanel({
           onClose={() => setEditing(null)}
         />
       )}
+      {showAdd && isAdmin && (
+        <AddModal
+          members={members}
+          selectedMember={selectedMember}
+          onClose={() => setShowAdd(false)}
+        />
+      )}
     </div>
   );
 }
@@ -184,12 +206,14 @@ function RecordRows({
   onEdit,
   onApprove,
   onReject,
+  onDelete,
 }: {
   r: Rec;
   isAdmin: boolean;
   onEdit: () => void;
   onApprove: () => void;
   onReject: () => void;
+  onDelete: () => void;
 }) {
   const hhmm = (iso: string | null) => (iso ? formatTime(iso) : "-");
   return (
@@ -215,13 +239,21 @@ function RecordRows({
             </span>
           )}
         </td>
-        <td className="px-4 py-2 text-right">
+        <td className="px-4 py-2 text-right whitespace-nowrap">
           <button
             onClick={onEdit}
             className="text-brand text-xs hover:underline"
           >
             編集
           </button>
+          {isAdmin && (
+            <button
+              onClick={onDelete}
+              className="text-red-500 text-xs hover:underline ml-3"
+            >
+              削除
+            </button>
+          )}
         </td>
       </tr>
       {r.editRequested && (
@@ -316,6 +348,20 @@ function EditModal({
               />
             </label>
           </div>
+          {isAdmin && (
+            <label className="block">
+              <span className="block text-sm font-medium mb-1">
+                休憩(分)
+              </span>
+              <input
+                type="number"
+                name="breakMin"
+                min={0}
+                defaultValue={rec.breakMin}
+                className={inputCls}
+              />
+            </label>
+          )}
           <label className="block">
             <span className="block text-sm font-medium mb-1">メモ</span>
             <input
@@ -325,9 +371,9 @@ function EditModal({
             />
           </label>
           <p className="text-xs text-gray-400">
-            休憩時間は勤務時間から自動計算されるため入力不要です。
-            {!isAdmin &&
-              " この変更は管理者の承認後に反映されます。"}
+            {isAdmin
+              ? "休憩は空にせず値を入れてください(既定は自動計算値)。"
+              : "休憩時間は勤務時間から自動計算されます。この変更は管理者の承認後に反映されます。"}
           </p>
           {state.error && (
             <p className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
@@ -348,6 +394,115 @@ function EditModal({
               className="px-4 py-2 text-sm rounded-lg bg-brand text-white hover:bg-brand-dark disabled:opacity-60"
             >
               {pending ? "送信中..." : isAdmin ? "保存" : "変更を申請"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AddModal({
+  members,
+  selectedMember,
+  onClose,
+}: {
+  members: Member[];
+  selectedMember: string;
+  onClose: () => void;
+}) {
+  const [state, action, pending] = useActionState(createAttendance, initial);
+
+  useEffect(() => {
+    if (state.ok) onClose();
+  }, [state.ok, onClose]);
+
+  const todayStr = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
+      2,
+      "0",
+    )}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl w-full max-w-md">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="font-semibold">勤怠を追加</h2>
+          <button onClick={onClose} className="text-gray-400 text-xl">
+            ×
+          </button>
+        </div>
+        <form action={action} className="p-5 space-y-4">
+          <label className="block">
+            <span className="block text-sm font-medium mb-1">対象者</span>
+            <select
+              name="userId"
+              defaultValue={selectedMember}
+              className={inputCls}
+            >
+              {members.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-1">日付</span>
+            <input
+              type="date"
+              name="workDate"
+              defaultValue={todayStr}
+              className={inputCls}
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block">
+              <span className="block text-sm font-medium mb-1">出勤</span>
+              <input type="time" name="clockIn" className={inputCls} />
+            </label>
+            <label className="block">
+              <span className="block text-sm font-medium mb-1">退勤</span>
+              <input type="time" name="clockOut" className={inputCls} />
+            </label>
+          </div>
+          <label className="block">
+            <span className="block text-sm font-medium mb-1">
+              休憩(分・空欄で自動計算)
+            </span>
+            <input
+              type="number"
+              name="breakMin"
+              min={0}
+              placeholder="自動"
+              className={inputCls}
+            />
+          </label>
+          <label className="block">
+            <span className="block text-sm font-medium mb-1">メモ</span>
+            <input name="note" className={inputCls} />
+          </label>
+          {state.error && (
+            <p className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
+              {state.error}
+            </p>
+          )}
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50"
+            >
+              キャンセル
+            </button>
+            <button
+              type="submit"
+              disabled={pending}
+              className="px-4 py-2 text-sm rounded-lg bg-brand text-white hover:bg-brand-dark disabled:opacity-60"
+            >
+              {pending ? "追加中..." : "追加"}
             </button>
           </div>
         </form>
