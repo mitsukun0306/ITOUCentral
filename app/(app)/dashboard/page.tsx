@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getSetting, computePayroll, PAYROLL_METHOD_LABEL } from "@/lib/payroll";
 import { yen, formatDate } from "@/lib/format";
+import { StatusBadge } from "@/components/StatusBadge";
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -175,20 +176,5 @@ function StatCard({
       <p className="text-xs text-gray-500">{label}</p>
       <p className={`text-2xl font-bold mt-1 ${accent}`}>{value}</p>
     </div>
-  );
-}
-
-const statusMap = {
-  TODO: { label: "未着手", cls: "bg-gray-100 text-gray-600" },
-  IN_PROGRESS: { label: "進行中", cls: "bg-amber-100 text-amber-700" },
-  DONE: { label: "完了", cls: "bg-green-100 text-green-700" },
-} as const;
-
-function StatusBadge({ status }: { status: keyof typeof statusMap }) {
-  const s = statusMap[status];
-  return (
-    <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${s.cls}`}>
-      {s.label}
-    </span>
   );
 }

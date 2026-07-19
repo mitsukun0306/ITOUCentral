@@ -11,7 +11,7 @@ const upsertSchema = z.object({
   title: z.string().min(1, "タイトルは必須です"),
   description: z.string().optional(),
   assigneeId: z.string().optional(),
-  status: z.enum(["TODO", "IN_PROGRESS", "DONE"]),
+  status: z.enum(["TODO", "IN_PROGRESS", "REVIEW", "DONE"]),
   fixedReward: z.coerce.number().int().min(0).default(0),
   unitPrice: z.coerce.number().int().min(0).default(0),
   quantity: z.coerce.number().int().min(0).default(0),
@@ -81,6 +81,7 @@ export async function upsertTask(
 
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
+  revalidatePath("/notifications");
   return { ok: true };
 }
 
@@ -89,8 +90,14 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus) {
   const user = await requireUser();
   const task = await prisma.task.findUnique({ where: { id: taskId } });
   if (!task) throw new Error("タスクが見つかりません");
-  if (user.role !== "ADMIN" && task.assigneeId !== user.id) {
-    throw new Error("権限がありません");
+
+  const isAdmin = user.role === "ADMIN";
+  if (!isAdmin) {
+    if (task.assigneeId !== user.id) throw new Error("権限がありません");
+    // メンバーは「完了(DONE)」を直接設定できない。完了は申請(REVIEW)まで。
+    if (status === "DONE") {
+      throw new Error("完了は管理者の承認が必要です。完了申請を行ってください");
+    }
   }
 
   const completedAt =
@@ -102,6 +109,7 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus) {
   });
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
+  revalidatePath("/notifications");
 }
 
 export async function deleteTask(taskId: string) {
@@ -109,4 +117,5 @@ export async function deleteTask(taskId: string) {
   await prisma.task.delete({ where: { id: taskId } });
   revalidatePath("/tasks");
   revalidatePath("/dashboard");
+  revalidatePath("/notifications");
 }

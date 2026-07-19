@@ -26,12 +26,64 @@ type TaskDTO = {
 
 type Member = { id: string; name: string };
 
-const STATUSES: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
+const STATUSES: TaskStatus[] = ["TODO", "IN_PROGRESS", "REVIEW", "DONE"];
 const STATUS_LABEL: Record<TaskStatus, string> = {
   TODO: "未着手",
   IN_PROGRESS: "進行中",
+  REVIEW: "完了申請中",
   DONE: "完了",
 };
+
+// 色付き切替ボタンの見た目(選択中の配色)
+const STATUS_ACTIVE_CLS: Record<TaskStatus, string> = {
+  TODO: "bg-gray-500 border-gray-500 text-white",
+  IN_PROGRESS: "bg-amber-500 border-amber-500 text-white",
+  REVIEW: "bg-blue-500 border-blue-500 text-white",
+  DONE: "bg-green-600 border-green-600 text-white",
+};
+
+/** 色付きのステータス切替ボタン群。メンバーは完了(DONE)を選べず、代わりに完了申請(REVIEW)まで。 */
+function StatusButtons({
+  status,
+  isAdmin,
+  onChange,
+}: {
+  status: TaskStatus;
+  isAdmin: boolean;
+  onChange: (s: TaskStatus) => void;
+}) {
+  const options: TaskStatus[] = isAdmin
+    ? ["TODO", "IN_PROGRESS", "REVIEW", "DONE"]
+    : ["TODO", "IN_PROGRESS", "REVIEW"];
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {options.map((s) => {
+        const active = status === s;
+        // メンバー視点では REVIEW ボタンは「完了申請」というアクション表記にする
+        let label = STATUS_LABEL[s];
+        if (!isAdmin && s === "REVIEW") label = active ? "申請中" : "完了申請";
+        return (
+          <button
+            key={s}
+            type="button"
+            aria-pressed={active}
+            onClick={() => {
+              if (!active) onChange(s);
+            }}
+            className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
+              active
+                ? STATUS_ACTIVE_CLS[s]
+                : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+            }`}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export function TaskBoard({
   isAdmin,
@@ -126,30 +178,32 @@ export function TaskBoard({
                       )}
                       {t.dueDate && <span>期限: {formatDate(t.dueDate)}</span>}
                     </div>
+
+                    {canEditStatus(t) && (
+                      <div className="mt-2.5">
+                        <StatusButtons
+                          status={t.status}
+                          isAdmin={isAdmin}
+                          onChange={(s) =>
+                            startTransition(() => updateTaskStatus(t.id, s))
+                          }
+                        />
+                        {!isAdmin && t.status === "REVIEW" && (
+                          <p className="text-[11px] text-blue-600 mt-1">
+                            完了申請中です。管理者の承認をお待ちください。
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="flex flex-col items-end gap-2">
-                    {canEditStatus(t) && (
-                      <select
-                        value={t.status}
-                        onChange={(e) =>
-                          startTransition(() =>
-                            updateTaskStatus(
-                              t.id,
-                              e.target.value as TaskStatus,
-                            ),
-                          )
-                        }
-                        className="text-xs border border-gray-200 rounded-md px-2 py-1"
-                      >
-                        {STATUSES.map((s) => (
-                          <option key={s} value={s}>
-                            {STATUS_LABEL[s]}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    {isAdmin && (
+                  {isAdmin && (
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      {t.status === "REVIEW" && (
+                        <span className="text-[11px] text-blue-600 font-medium">
+                          承認待ち
+                        </span>
+                      )}
                       <div className="flex gap-2 text-xs">
                         <button
                           onClick={() => openEdit(t)}
@@ -167,8 +221,8 @@ export function TaskBoard({
                           削除
                         </button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               </li>
             ))}

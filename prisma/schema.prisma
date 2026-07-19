@@ -19,6 +19,7 @@ enum Role {
 enum TaskStatus {
   TODO
   IN_PROGRESS
+  REVIEW // 完了申請中(メンバーが申請 → 管理者が承認で DONE へ)
   DONE
 }
 

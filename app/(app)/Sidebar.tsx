@@ -8,6 +8,7 @@ import { logout } from "./logout/actions";
 
 const nav = [
   { href: "/dashboard", label: "ダッシュボード", icon: "▦" },
+  { href: "/notifications", label: "通知", icon: "🔔" },
   { href: "/tasks", label: "タスク", icon: "✓" },
   { href: "/attendance", label: "勤怠", icon: "◷" },
   { href: "/payroll", label: "給与", icon: "¥" },
@@ -18,7 +19,13 @@ const adminNav = [
   { href: "/settings", label: "設定", icon: "⚙" },
 ];
 
-export function Sidebar({ user }: { user: SessionUser }) {
+export function Sidebar({
+  user,
+  notifCount = 0,
+}: {
+  user: SessionUser;
+  notifCount?: number;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -42,10 +49,15 @@ export function Sidebar({ user }: { user: SessionUser }) {
         </span>
         <button
           onClick={() => setOpen((v) => !v)}
-          className="text-gray-600 text-xl"
+          className="relative text-gray-600 text-xl"
           aria-label="メニュー"
         >
           ☰
+          {notifCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-semibold">
+              {notifCount > 99 ? "99+" : notifCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -69,7 +81,12 @@ export function Sidebar({ user }: { user: SessionUser }) {
               className={linkClass(item.href)}
             >
               <span className="w-5 text-center">{item.icon}</span>
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.href === "/notifications" && notifCount > 0 && (
+                <span className="min-w-5 h-5 px-1.5 flex items-center justify-center rounded-full bg-red-500 text-white text-[11px] font-semibold">
+                  {notifCount > 99 ? "99+" : notifCount}
+                </span>
+              )}
             </Link>
           ))}
         </nav>
