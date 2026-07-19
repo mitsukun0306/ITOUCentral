@@ -1,5 +1,6 @@
 import "server-only";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
@@ -66,11 +67,20 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
 
+  // 1) トークン自体の検証。署名不正・期限切れは「未認証」として null。
+  let payload;
   try {
-    const { payload } = await jwtVerify(token, getSecret());
-    const id = payload.sub;
-    if (!id) return null;
-    // DBで在籍確認(退職・停止ユーザーを弾く)
+    ({ payload } = await jwtVerify(token, getSecret()));
+  } catch {
+    return null;
+  }
+  const id = payload.sub;
+  if (!id) return null;
+
+  // 2) DBで在籍確認(退職・停止ユーザーを弾く)。
+  //    DBが一時的に応答しない場合でもログアウトさせず、トークンの情報で継続する
+  //    (一過性のDB障害でセッションが飛ぶ／エラー画面になるのを防ぐ)。
+  try {
     const user = await prisma.user.findUnique({ where: { id } });
     if (!user || !user.active) return null;
     return {
@@ -79,15 +89,21 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       email: user.email,
       role: user.role,
     };
-  } catch {
-    return null;
+  } catch (e) {
+    console.error("getSessionUser: DB確認に失敗。トークン情報で継続します", e);
+    return {
+      id,
+      name: typeof payload.name === "string" ? payload.name : "",
+      email: typeof payload.email === "string" ? payload.email : "",
+      role: payload.role === "ADMIN" ? "ADMIN" : "MEMBER",
+    };
   }
 }
 
-/** 認証必須ページ用。未ログインなら例外(呼び出し側でリダイレクト) */
+/** 認証必須ページ/アクション用。未ログインなら /login へリダイレクト(例外は投げない)。 */
 export async function requireUser(): Promise<SessionUser> {
   const user = await getSessionUser();
-  if (!user) throw new Error("UNAUTHENTICATED");
+  if (!user) redirect("/login");
   return user;
 }
 
