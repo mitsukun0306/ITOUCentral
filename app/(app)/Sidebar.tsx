@@ -12,6 +12,7 @@ const nav = [
   { href: "/tasks", label: "タスク", icon: "✓" },
   { href: "/attendance", label: "勤怠", icon: "◷" },
   { href: "/payroll", label: "給与", icon: "¥" },
+  { href: "/benefits", label: "福利厚生", icon: "🎁" },
 ];
 
 const adminNav = [

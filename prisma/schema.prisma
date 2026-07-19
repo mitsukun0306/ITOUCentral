@@ -34,6 +34,12 @@ enum PayrollStatus {
   CONFIRMED
 }
 
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 /// ユーザー(管理者 / メンバー=業務委託者)
 model User {
   id           String   @id @default(cuid())
@@ -48,6 +54,7 @@ model User {
   tasks       Task[]
   attendances Attendance[]
   payrolls    Payroll[]
+  expenses    ExpenseRequest[]
 }
 
 /// タスク(成果報酬の元データ)
@@ -129,4 +136,38 @@ model Setting {
   companyName          String        @default("いとう開発部")
   defaultPayrollMethod PayrollMethod @default(TASK_FIXED)
   updatedAt            DateTime      @updatedAt
+}
+
+/// 福利厚生: リトリートイベント(管理者が登録)
+model RetreatEvent {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  location    String?
+  startDate   DateTime
+  endDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([startDate])
+}
+
+/// 福利厚生: 経費申請(メンバーが申請 → 管理者が承認/却下)
+model ExpenseRequest {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  amount      Int           @default(0) // 金額(円)
+  category    String?
+  incurredOn  DateTime? // 発生日
+  note        String?
+  status      ExpenseStatus @default(PENDING)
+  decidedAt   DateTime?
+  decidedNote String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([userId])
+  @@index([status])
 }

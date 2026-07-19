@@ -18,3 +18,92 @@ body {
   font-family:
     -apple-system, "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, sans-serif;
 }
+
+/* ===== ログイン後の名言イントロ演出 ===== */
+.intro-overlay {
+  background:
+    radial-gradient(circle at 50% 30%, #1a2740 0%, #0a0e17 55%, #05070c 100%);
+  animation: intro-in 0.6s ease both;
+}
+
+/* 中央付近で脈打つ光 */
+.intro-glow {
+  position: absolute;
+  top: 32%;
+  left: 50%;
+  width: 60vmax;
+  height: 60vmax;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    rgba(31, 111, 235, 0.28) 0%,
+    rgba(31, 111, 235, 0) 60%
+  );
+  filter: blur(20px);
+  animation: intro-pulse 3.6s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* 各要素をふわっと下から */
+.intro-item {
+  opacity: 0;
+  animation: intro-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.intro-bar {
+  width: 0;
+  animation: intro-progress linear both;
+}
+
+@keyframes intro-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes intro-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes intro-pulse {
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+}
+
+@keyframes intro-progress {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-overlay,
+  .intro-item,
+  .intro-glow,
+  .intro-bar {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

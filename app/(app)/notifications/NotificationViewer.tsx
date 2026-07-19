@@ -21,6 +21,12 @@ const KIND_STYLE: Record<
     icon: "🕒",
     ring: "border-indigo-200",
   },
+  EXPENSE_REQUEST: {
+    badge: "bg-emerald-100 text-emerald-700",
+    label: "経費申請",
+    icon: "💳",
+    ring: "border-emerald-200",
+  },
   DEADLINE_OVERDUE: {
     badge: "bg-red-100 text-red-700",
     label: "期限超過",

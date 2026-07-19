@@ -2,11 +2,17 @@
 
 import { useActionState } from "react";
 import { login, type LoginState } from "./actions";
+import { LoginIntro } from "./LoginIntro";
 
 const initial: LoginState = {};
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState(login, initial);
+
+  // ログイン成功: 名言アニメーションを再生してからダッシュボードへ
+  if (state.ok) {
+    return <LoginIntro />;
+  }
 
   return (
     <form action={formAction} className="space-y-4">

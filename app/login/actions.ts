@@ -1,6 +1,5 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { createSession, verifyPassword } from "@/lib/auth";
@@ -10,7 +9,7 @@ const schema = z.object({
   password: z.string().min(1, "パスワードを入力してください"),
 });
 
-export type LoginState = { error?: string };
+export type LoginState = { error?: string; ok?: boolean };
 
 export async function login(
   _prev: LoginState,
@@ -42,5 +41,6 @@ export async function login(
     role: user.role,
   });
 
-  redirect("/dashboard");
+  // リダイレクトはクライアントで演出(名言アニメーション)後に行う
+  return { ok: true };
 }

@@ -4,6 +4,7 @@ import type { SessionUser } from "@/lib/auth";
 export type NotificationKind =
   | "COMPLETION_REQUEST" // タスク完了申請(管理者向け)
   | "ATTENDANCE_EDIT_REQUEST" // 勤怠変更申請(管理者向け)
+  | "EXPENSE_REQUEST" // 経費申請(管理者向け)
   | "DEADLINE_OVERDUE" // 期限超過
   | "DEADLINE_SOON" // 期限接近
   | "TODO"; // 未着手
@@ -75,6 +76,24 @@ export async function getNotifications(
         detail: `${a.user.name} / ${a.workDate.toLocaleDateString("ja-JP")}`,
         href: `/attendance?member=${a.userId}`,
         linkLabel: "勤怠を開く",
+        dueDate: null,
+      });
+    }
+
+    // --- 管理者: 経費申請(承認待ち) ---
+    const expenses = await prisma.expenseRequest.findMany({
+      where: { status: "PENDING" },
+      include: { user: { select: { name: true } } },
+      orderBy: { createdAt: "asc" },
+    });
+    for (const x of expenses) {
+      list.push({
+        id: `expense-${x.id}`,
+        kind: "EXPENSE_REQUEST",
+        title: "経費申請",
+        detail: `${x.title} / ${x.user.name}`,
+        href: "/benefits",
+        linkLabel: "福利厚生を開く",
         dueDate: null,
       });
     }
