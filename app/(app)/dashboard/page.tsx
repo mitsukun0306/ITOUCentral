@@ -42,6 +42,27 @@ export default async function DashboardPage() {
     orgMonthlyTotal = results.reduce((s, r) => s + r.amount, 0);
   }
 
+  // メンバー向け: 確定済報酬実績(今年の確定合計)と 今月末支給額
+  let confirmedYearTotal = 0;
+  let thisMonthAmount = myMonthly.amount;
+  let thisMonthStatus: string | null = null;
+  if (!isAdmin) {
+    const [agg, savedThisMonth] = await Promise.all([
+      prisma.payroll.aggregate({
+        where: { userId: user.id, status: "CONFIRMED", year },
+        _sum: { amount: true },
+      }),
+      prisma.payroll.findUnique({
+        where: { userId_year_month: { userId: user.id, year, month } },
+      }),
+    ]);
+    confirmedYearTotal = agg._sum.amount ?? 0;
+    if (savedThisMonth) {
+      thisMonthAmount = savedThisMonth.amount;
+      thisMonthStatus = savedThisMonth.status;
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -51,15 +72,43 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {!isAdmin && (
+        <div className="bg-brand text-white rounded-2xl p-6 md:p-8 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div>
+              <p className="text-sm text-white/80">確定済報酬実績({year}年)</p>
+              <p className="text-4xl md:text-5xl font-bold mt-1 tracking-tight">
+                {yen(confirmedYearTotal)}
+              </p>
+            </div>
+            <div className="sm:text-right border-t border-white/20 pt-3 sm:border-t-0 sm:border-l sm:pt-0 sm:pl-6">
+              <p className="text-xs text-white/70">今月末支給額</p>
+              <p className="text-xl md:text-2xl font-semibold mt-0.5">
+                {yen(thisMonthAmount)}
+              </p>
+              <p className="text-[11px] text-white/60 mt-0.5">
+                {thisMonthStatus === "CONFIRMED" ? "確定済" : "見込み(未確定)"}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div
+        className={`grid gap-4 ${
+          isAdmin ? "grid-cols-2 lg:grid-cols-4" : "grid-cols-3"
+        }`}
+      >
         <StatCard label="未着手" value={todo} accent="text-gray-700" />
         <StatCard label="進行中" value={inProgress} accent="text-amber-600" />
         <StatCard label="完了" value={done} accent="text-green-600" />
-        <StatCard
-          label={isAdmin ? "今月の見込み総額" : "今月の見込み報酬"}
-          value={isAdmin ? yen(orgMonthlyTotal) : yen(myMonthly.amount)}
-          accent="text-brand"
-        />
+        {isAdmin && (
+          <StatCard
+            label="今月の見込み総額"
+            value={yen(orgMonthlyTotal)}
+            accent="text-brand"
+          />
+        )}
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-4 text-sm text-gray-600">
