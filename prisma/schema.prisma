@@ -1,0 +1,118 @@
+// ITOUCentral データベーススキーマ
+// 開発中は SQLite。将来サーバー運用時は datasource を postgresql に変更するだけで移行可能。
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MEMBER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum PayrollMethod {
+  TASK_FIXED // タスクごとの固定報酬を合算
+  UNIT_QUANTITY // 単価 × 成果量 を合算
+  MONTHLY_MANUAL // 月ごとに手入力で確定
+}
+
+enum PayrollStatus {
+  DRAFT
+  CONFIRMED
+}
+
+/// ユーザー(管理者 / メンバー=業務委託者)
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(MEMBER)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  tasks       Task[]
+  attendances Attendance[]
+  payrolls    Payroll[]
+}
+
+/// タスク(成果報酬の元データ)
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus @default(TODO)
+
+  assigneeId String?
+  assignee   User?   @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  // 報酬計算に使う入力値(給与計算方式によりどれを使うか決まる)
+  fixedReward Int @default(0) // タスク固定報酬(円)
+  unitPrice   Int @default(0) // 単価(円)
+  quantity    Int @default(0) // 成果量
+
+  dueDate     DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([assigneeId])
+  @@index([status])
+}
+
+/// 勤怠
+model Attendance {
+  id       String    @id @default(cuid())
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workDate DateTime // 対象日(0時基準)
+  clockIn  DateTime?
+  clockOut DateTime?
+  breakMin Int       @default(0) // 休憩(分)
+  note     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, workDate])
+  @@index([userId])
+}
+
+/// 給与(月次)
+model Payroll {
+  id          String        @id @default(cuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year        Int
+  month       Int
+  method      PayrollMethod
+  amount      Int           @default(0) // 計算結果 or 手入力額
+  note        String?
+  status      PayrollStatus @default(DRAFT)
+  confirmedAt DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([userId, year, month])
+  @@index([year, month])
+}
+
+/// アプリ全体設定(1レコードのみ)
+model Setting {
+  id                   Int           @id @default(1)
+  companyName          String        @default("いとう開発部")
+  defaultPayrollMethod PayrollMethod @default(TASK_FIXED)
+  updatedAt            DateTime      @updatedAt
+}

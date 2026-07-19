@@ -1,0 +1,39 @@
+# Render Blueprint — ITOUCentral
+# Render ダッシュボードの「New +」→「Blueprint」からこのリポジトリを選ぶと、
+# PostgreSQL と Web サービスをまとめて作成します。
+# docs: https://render.com/docs/blueprint-spec
+
+databases:
+  - name: itoucentral-db
+    databaseName: itoucentral
+    user: itoucentral
+    plan: basic-256mb # 有料の永続DB(本運用向け)。お試しは free に変更可(約30日で失効)
+
+services:
+  - type: web
+    name: itoucentral
+    runtime: node
+    plan: starter # 有料。お試しは free に変更可
+    region: singapore # 日本から近いリージョン(oregon 等に変更可)
+    branch: main
+    buildCommand: npm ci --include=dev && npx prisma generate && npm run build
+    # 本番DBへマイグレーション適用 + 管理者/設定の初期化(冪等)
+    preDeployCommand: npx prisma migrate deploy && npx prisma db seed
+    startCommand: npm start
+    healthCheckPath: /login
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: itoucentral-db
+          property: connectionString
+      - key: AUTH_SECRET
+        generateValue: true # ランダムな秘密鍵を自動生成
+      - key: NODE_ENV
+        value: production
+      # 初期管理者。Blueprint 作成時にダッシュボードで入力を求められます。
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_NAME
+        sync: false

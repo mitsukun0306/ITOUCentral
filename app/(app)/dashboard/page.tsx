@@ -1,0 +1,145 @@
+import Link from "next/link";
+import { requireUser } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { getSetting, computePayroll, PAYROLL_METHOD_LABEL } from "@/lib/payroll";
+import { yen, formatDate } from "@/lib/format";
+
+export default async function DashboardPage() {
+  const user = await requireUser();
+  const setting = await getSetting();
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  const isAdmin = user.role === "ADMIN";
+
+  // メンバーは自分の、管理者は全体の状況
+  const taskWhere = isAdmin ? {} : { assigneeId: user.id };
+
+  const [todo, inProgress, done, myMonthly] = await Promise.all([
+    prisma.task.count({ where: { ...taskWhere, status: "TODO" } }),
+    prisma.task.count({ where: { ...taskWhere, status: "IN_PROGRESS" } }),
+    prisma.task.count({ where: { ...taskWhere, status: "DONE" } }),
+    computePayroll(user.id, year, month, setting.defaultPayrollMethod),
+  ]);
+
+  const recentTasks = await prisma.task.findMany({
+    where: taskWhere,
+    orderBy: { updatedAt: "desc" },
+    take: 5,
+    include: { assignee: { select: { name: true } } },
+  });
+
+  // 管理者向け: 今月の見込み総額
+  let orgMonthlyTotal = 0;
+  if (isAdmin) {
+    const members = await prisma.user.findMany({ where: { active: true } });
+    const results = await Promise.all(
+      members.map((m) =>
+        computePayroll(m.id, year, month, setting.defaultPayrollMethod),
+      ),
+    );
+    orgMonthlyTotal = results.reduce((s, r) => s + r.amount, 0);
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">ダッシュボード</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          {year}年{month}月 ・ {user.name} さん
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard label="未着手" value={todo} accent="text-gray-700" />
+        <StatCard label="進行中" value={inProgress} accent="text-amber-600" />
+        <StatCard label="完了" value={done} accent="text-green-600" />
+        <StatCard
+          label={isAdmin ? "今月の見込み総額" : "今月の見込み報酬"}
+          value={isAdmin ? yen(orgMonthlyTotal) : yen(myMonthly.amount)}
+          accent="text-brand"
+        />
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-4 text-sm text-gray-600">
+        現在の給与計算方式:{" "}
+        <span className="font-medium text-gray-900">
+          {PAYROLL_METHOD_LABEL[setting.defaultPayrollMethod]}
+        </span>
+        {isAdmin && (
+          <>
+            {" "}
+            <Link href="/settings" className="text-brand hover:underline">
+              変更
+            </Link>
+          </>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200">
+        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="font-semibold">最近のタスク</h2>
+          <Link href="/tasks" className="text-sm text-brand hover:underline">
+            すべて見る
+          </Link>
+        </div>
+        {recentTasks.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-gray-400">
+            タスクはまだありません
+          </p>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {recentTasks.map((t) => (
+              <li
+                key={t.id}
+                className="px-4 py-3 flex items-center justify-between gap-4"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{t.title}</p>
+                  <p className="text-xs text-gray-400">
+                    {t.assignee?.name ?? "未割当"} ・ 更新{" "}
+                    {formatDate(t.updatedAt)}
+                  </p>
+                </div>
+                <StatusBadge status={t.status} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string | number;
+  accent: string;
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-4">
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className={`text-2xl font-bold mt-1 ${accent}`}>{value}</p>
+    </div>
+  );
+}
+
+const statusMap = {
+  TODO: { label: "未着手", cls: "bg-gray-100 text-gray-600" },
+  IN_PROGRESS: { label: "進行中", cls: "bg-amber-100 text-amber-700" },
+  DONE: { label: "完了", cls: "bg-green-100 text-green-700" },
+} as const;
+
+function StatusBadge({ status }: { status: keyof typeof statusMap }) {
+  const s = statusMap[status];
+  return (
+    <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${s.cls}`}>
+      {s.label}
+    </span>
+  );
+}
