@@ -7,6 +7,7 @@ databases:
   - name: itoucentral-db
     databaseName: itoucentral
     user: itoucentral
+    region: singapore # ★Webサービスと同一リージョンにする(内部接続の必須条件)
     plan: basic-256mb # 有料の永続DB(本運用向け)。お試しは free に変更可(約30日で失効)
 
 services:
