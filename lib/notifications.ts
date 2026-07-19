@@ -2,7 +2,8 @@ import { prisma } from "@/lib/db";
 import type { SessionUser } from "@/lib/auth";
 
 export type NotificationKind =
-  | "COMPLETION_REQUEST" // 完了申請(管理者向け)
+  | "COMPLETION_REQUEST" // タスク完了申請(管理者向け)
+  | "ATTENDANCE_EDIT_REQUEST" // 勤怠変更申請(管理者向け)
   | "DEADLINE_OVERDUE" // 期限超過
   | "DEADLINE_SOON" // 期限接近
   | "TODO"; // 未着手
@@ -12,7 +13,8 @@ export type AppNotification = {
   kind: NotificationKind;
   title: string;
   detail: string;
-  taskId: string;
+  href: string;
+  linkLabel: string;
   dueDate: string | null;
 };
 
@@ -25,7 +27,7 @@ function startOfToday(): Date {
 
 /**
  * 現在のユーザー向け通知を、優先度順に並べて返す。
- * - 管理者: 完了申請 → 期限超過 → 期限接近
+ * - 管理者: 完了申請 → 勤怠変更申請 → 期限超過 → 期限接近
  * - メンバー: 期限超過 → 期限接近 → 未着手(自分の担当分)
  */
 export async function getNotifications(
@@ -37,10 +39,9 @@ export async function getNotifications(
 
   const list: AppNotification[] = [];
   const seen = new Set<string>();
-
   const isAdmin = user.role === "ADMIN";
 
-  // --- 管理者: 完了申請 ---
+  // --- 管理者: タスク完了申請 ---
   if (isAdmin) {
     const reviews = await prisma.task.findMany({
       where: { status: "REVIEW" },
@@ -51,12 +52,31 @@ export async function getNotifications(
       list.push({
         id: `review-${t.id}`,
         kind: "COMPLETION_REQUEST",
-        title: "完了申請",
+        title: "タスク完了申請",
         detail: `${t.title}(申請者: ${t.assignee?.name ?? "未割当"})`,
-        taskId: t.id,
+        href: "/tasks",
+        linkLabel: "タスクを開く",
         dueDate: t.dueDate ? t.dueDate.toISOString() : null,
       });
       seen.add(t.id);
+    }
+
+    // --- 管理者: 勤怠変更申請 ---
+    const attReqs = await prisma.attendance.findMany({
+      where: { editRequested: true },
+      include: { user: { select: { name: true } } },
+      orderBy: { reqAt: "asc" },
+    });
+    for (const a of attReqs) {
+      list.push({
+        id: `att-${a.id}`,
+        kind: "ATTENDANCE_EDIT_REQUEST",
+        title: "勤怠の変更申請",
+        detail: `${a.user.name} / ${a.workDate.toLocaleDateString("ja-JP")}`,
+        href: `/attendance?member=${a.userId}`,
+        linkLabel: "勤怠を開く",
+        dueDate: null,
+      });
     }
   }
 
@@ -83,7 +103,8 @@ export async function getNotifications(
       kind: isOverdue ? "DEADLINE_OVERDUE" : "DEADLINE_SOON",
       title: isOverdue ? "期限超過" : "期限が近づいています",
       detail: [t.title, who].filter(Boolean).join(" / "),
-      taskId: t.id,
+      href: "/tasks",
+      linkLabel: "タスクを開く",
       dueDate: t.dueDate.toISOString(),
     };
     (isOverdue ? overdue : dueSoon).push(n);
@@ -104,7 +125,8 @@ export async function getNotifications(
         kind: "TODO",
         title: "未着手のタスク",
         detail: t.title,
-        taskId: t.id,
+        href: "/tasks",
+        linkLabel: "タスクを開く",
         dueDate: t.dueDate ? t.dueDate.toISOString() : null,
       });
     }

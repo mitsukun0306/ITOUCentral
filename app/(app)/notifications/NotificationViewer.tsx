@@ -15,6 +15,12 @@ const KIND_STYLE: Record<
     icon: "📝",
     ring: "border-blue-200",
   },
+  ATTENDANCE_EDIT_REQUEST: {
+    badge: "bg-indigo-100 text-indigo-700",
+    label: "勤怠変更申請",
+    icon: "🕒",
+    ring: "border-indigo-200",
+  },
   DEADLINE_OVERDUE: {
     badge: "bg-red-100 text-red-700",
     label: "期限超過",
@@ -86,10 +92,10 @@ export function NotificationViewer({
 
         <div className="flex items-center gap-3 mt-6">
           <Link
-            href="/tasks"
+            href={n.href}
             className="rounded-lg bg-brand text-white px-4 py-2 text-sm font-medium hover:bg-brand-dark"
           >
-            タスクを開く
+            {n.linkLabel}
           </Link>
           {total > 1 && (
             <button

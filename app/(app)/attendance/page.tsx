@@ -63,6 +63,10 @@ export default async function AttendancePage({
         clockOut: r.clockOut?.toISOString() ?? null,
         breakMin: r.breakMin,
         note: r.note,
+        editRequested: r.editRequested,
+        reqClockIn: r.reqClockIn?.toISOString() ?? null,
+        reqClockOut: r.reqClockOut?.toISOString() ?? null,
+        reqNote: r.reqNote,
       }))}
     />
   );

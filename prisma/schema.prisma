@@ -82,8 +82,16 @@ model Attendance {
   workDate DateTime // 対象日(0時基準)
   clockIn  DateTime?
   clockOut DateTime?
-  breakMin Int       @default(0) // 休憩(分)
+  breakMin Int       @default(0) // 休憩(分)。勤務時間から自動算出。
   note     String?
+
+  // メンバーからの時刻変更申請(管理者承認で反映)
+  editRequested Boolean   @default(false)
+  reqClockIn    DateTime?
+  reqClockOut   DateTime?
+  reqNote       String?
+  reqAt         DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
