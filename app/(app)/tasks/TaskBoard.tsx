@@ -104,6 +104,19 @@ export function TaskBoard({
   const [filter, setFilter] = useState<TaskStatus | "ALL">("ALL");
   const [, startTransition] = useTransition();
 
+  // 期限超過判定用の時刻(クライアント確定後にのみ有効化しハイドレーション不一致を回避)
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  const isOverdue = (t: TaskDTO) =>
+    now !== null &&
+    t.status !== "DONE" &&
+    !!t.dueDate &&
+    new Date(t.dueDate).getTime() <= now;
+
   const visible = tasks.filter((t) => filter === "ALL" || t.status === filter);
 
   const openNew = () => {
@@ -156,12 +169,26 @@ export function TaskBoard({
         ) : (
           <ul className="divide-y divide-gray-100">
             {visible.map((t) => (
-              <li key={t.id} className="px-4 py-3">
+              <li
+                key={t.id}
+                className={`px-4 py-3 ${isOverdue(t) ? "task-overdue" : ""}`}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium">{t.title}</span>
+                      <span
+                        className={`font-medium ${
+                          isOverdue(t) ? "text-red-700" : ""
+                        }`}
+                      >
+                        {t.title}
+                      </span>
                       <StatusBadge status={t.status} />
+                      {isOverdue(t) && (
+                        <span className="text-[11px] font-bold text-red-700">
+                          ⚠ 期限超過
+                        </span>
+                      )}
                     </div>
                     {t.description && (
                       <p className="text-sm text-gray-500 mt-1 line-clamp-2">
@@ -181,8 +208,12 @@ export function TaskBoard({
                       )}
                       {t.dueDate && (
                         <span className="inline-flex items-center gap-1.5">
-                          期限: {formatDate(t.dueDate)}
-                          <Countdown dueIso={t.dueDate} done={t.status === "DONE"} />
+                          期限: {formatDate(t.dueDate)}{" "}
+                          <span className="text-gray-500">0:00</span>
+                          <Countdown
+                            dueIso={t.dueDate}
+                            done={t.status === "DONE"}
+                          />
                         </span>
                       )}
                       {t.payoutYear && t.payoutMonth && (

@@ -5,6 +5,8 @@ import {
   computePayroll,
   memberMonthlyPayout,
   mealAllowanceForMonth,
+  taskAmount,
+  lateInfo,
 } from "@/lib/payroll";
 import { jstYearMonth } from "@/lib/format";
 import { AdminPayroll } from "./AdminPayroll";
@@ -87,13 +89,19 @@ export default async function PayrollPage({
       amount={payout.amount}
       status={payout.status}
       note={saved?.note ?? null}
-      tasks={tasks.map((t) => ({
-        id: t.id,
-        title: t.title,
-        fixedReward: t.fixedReward,
-        unitPrice: t.unitPrice,
-        quantity: t.quantity,
-      }))}
+      tasks={tasks.map((t) => {
+        const late = lateInfo(t);
+        const base = taskAmount(t, method);
+        return {
+          id: t.id,
+          title: t.title,
+          unitPrice: t.unitPrice,
+          quantity: t.quantity,
+          base,
+          payable: Math.floor(base * late.mult),
+          penaltyLabel: late.label,
+        };
+      })}
     />
   );
 }

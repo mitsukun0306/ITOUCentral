@@ -3,17 +3,14 @@ import { PAYROLL_METHOD_LABEL } from "@/lib/payroll";
 import { yen } from "@/lib/format";
 import type { PayrollMethod } from "@/lib/generated/prisma";
 
-function rowAmount(t: TaskRow, method: PayrollMethod): number {
-  if (method === "UNIT_QUANTITY") return t.unitPrice * t.quantity;
-  return t.fixedReward;
-}
-
 type TaskRow = {
   id: string;
   title: string;
-  fixedReward: number;
   unitPrice: number;
   quantity: number;
+  base: number; // 減額前
+  payable: number; // 減額後(実支給)
+  penaltyLabel: string | null;
 };
 
 export function MemberPayroll({
@@ -87,9 +84,23 @@ export function MemberPayroll({
                           {yen(t.unitPrice)} × {t.quantity}
                         </span>
                       )}
+                      {t.penaltyLabel && (
+                        <span className="block text-[11px] text-red-600 mt-0.5">
+                          遅延減額: {t.penaltyLabel}
+                        </span>
+                      )}
                     </td>
-                    <td className="px-4 py-2 text-right font-medium">
-                      {yen(rowAmount(t, method))}
+                    <td className="px-4 py-2 text-right font-medium whitespace-nowrap">
+                      {t.penaltyLabel ? (
+                        <>
+                          <span className="text-gray-400 line-through mr-2 font-normal">
+                            {yen(t.base)}
+                          </span>
+                          <span className="text-red-600">{yen(t.payable)}</span>
+                        </>
+                      ) : (
+                        yen(t.payable)
+                      )}
                     </td>
                   </tr>
                 ))}

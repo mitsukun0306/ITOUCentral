@@ -108,6 +108,31 @@ body {
   }
 }
 
+/* ===== 期限超過タスクの派手な演出 ===== */
+.task-overdue {
+  border-left: 4px solid #dc2626;
+  animation: task-overdue-pulse 1.3s ease-in-out infinite;
+}
+@keyframes task-overdue-pulse {
+  0%,
+  100% {
+    background-color: #fef2f2;
+    box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.15);
+  }
+  50% {
+    background-color: #fecaca;
+    box-shadow:
+      inset 0 0 0 1px rgba(220, 38, 38, 0.4),
+      0 0 16px rgba(220, 38, 38, 0.4);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .task-overdue {
+    animation: none;
+    background-color: #fee2e2;
+  }
+}
+
 /* ===== ランクバッジ(レインボーの流れる演出) ===== */
 .rank-rainbow {
   animation: rank-shift 6s linear infinite;

@@ -64,7 +64,7 @@ export const PAYROLL_METHOD_LABEL: Record<PayrollMethod, string> = {
   MONTHLY_MANUAL: "月次手入力",
 };
 
-/** 1タスクの報酬額を、給与計算方式に応じて算出 */
+/** 1タスクの報酬額(減額前の基準額)を、給与計算方式に応じて算出 */
 export function taskAmount(task: Task, method: PayrollMethod): number {
   switch (method) {
     case "TASK_FIXED":
@@ -74,6 +74,31 @@ export function taskAmount(task: Task, method: PayrollMethod): number {
     case "MONTHLY_MANUAL":
       return 0; // 手入力のため自動計算しない
   }
+}
+
+/**
+ * 納品(完了)遅延による報酬倍率。
+ * - 期限内 / 期限なし: ×1
+ * - 超過24時間以内     : ×1/2
+ * - 超過3日未満        : ×1/3
+ * - 超過3日以降        : ×0
+ */
+export function lateInfo(task: {
+  dueDate: Date | null;
+  completedAt: Date | null;
+}): { mult: number; label: string | null } {
+  if (!task.dueDate || !task.completedAt) return { mult: 1, label: null };
+  const late = task.completedAt.getTime() - task.dueDate.getTime();
+  if (late <= 0) return { mult: 1, label: null };
+  const H = 3_600_000;
+  if (late <= 24 * H) return { mult: 1 / 2, label: "24時間超過(報酬1/2)" };
+  if (late < 72 * H) return { mult: 1 / 3, label: "3日未満超過(報酬1/3)" };
+  return { mult: 0, label: "3日以上超過(報酬なし)" };
+}
+
+/** 遅延減額を反映した実支給の報酬額(整数円・切り捨て) */
+export function taskPayable(task: Task, method: PayrollMethod): number {
+  return Math.floor(taskAmount(task, method) * lateInfo(task).mult);
 }
 
 /** 指定年月(JST)の [開始, 翌月開始) を JST 基準で返す */
@@ -115,7 +140,7 @@ export async function computePayroll(
     orderBy: { completedAt: "asc" },
   });
 
-  const amount = tasks.reduce((sum, t) => sum + taskAmount(t, method), 0);
+  const amount = tasks.reduce((sum, t) => sum + taskPayable(t, method), 0);
   return { amount, tasks };
 }
 
