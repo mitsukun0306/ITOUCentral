@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { toJstDateInput } from "@/lib/format";
 import { rankFor, MEAL_LIMIT, type RankKey } from "@/lib/rank";
 import type {
   PayrollMethod,
@@ -41,9 +42,7 @@ export async function mealAllowanceForMonth(
     where: { userId, date: { gte: start, lt: end } },
     select: { date: true, amount: true },
   });
-  const dayset = new Set(
-    records.map((r) => `${r.date.getFullYear()}-${r.date.getMonth()}-${r.date.getDate()}`),
-  );
+  const dayset = new Set(records.map((r) => toJstDateInput(r.date)));
   const days = dayset.size;
   const total = records.reduce((s, r) => s + r.amount, 0);
   const eligible = days >= 10;
@@ -77,10 +76,13 @@ export function taskAmount(task: Task, method: PayrollMethod): number {
   }
 }
 
-/** 指定年月の [開始, 翌月開始) を返す */
+/** 指定年月(JST)の [開始, 翌月開始) を JST 基準で返す */
 export function monthRange(year: number, month: number): [Date, Date] {
-  const start = new Date(year, month - 1, 1, 0, 0, 0, 0);
-  const end = new Date(year, month, 1, 0, 0, 0, 0);
+  const p = (n: number) => String(n).padStart(2, "0");
+  const ny = month === 12 ? year + 1 : year;
+  const nm = month === 12 ? 1 : month + 1;
+  const start = new Date(`${year}-${p(month)}-01T00:00:00+09:00`);
+  const end = new Date(`${ny}-${p(nm)}-01T00:00:00+09:00`);
   return [start, end];
 }
 

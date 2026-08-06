@@ -6,10 +6,11 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { breakForTimes } from "@/lib/attendance";
+import { jstDayStart, jstMidnight, toJstDateInput } from "@/lib/format";
 
-/** その日の0時(ローカル)を返す */
+/** その日(JST)の0時を返す */
 function dayStart(d = new Date()): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  return jstDayStart(d);
 }
 
 async function requireAdmin() {
@@ -66,11 +67,11 @@ const editSchema = z.object({
   breakMin: z.coerce.number().int().min(0).optional(),
 });
 
-/** "HH:MM" を対象日の DateTime に変換 */
+/** "HH:MM"(JST)を対象日(JST)の DateTime に変換 */
 function timeOnDate(base: Date, hhmm?: string | null): Date | null {
   if (!hhmm) return null;
-  const [h, m] = hhmm.split(":").map(Number);
-  return new Date(base.getFullYear(), base.getMonth(), base.getDate(), h, m);
+  const ymd = toJstDateInput(base);
+  return new Date(`${ymd}T${hhmm}:00+09:00`);
 }
 
 export type AttendanceFormState = {
@@ -239,11 +240,7 @@ export async function createAttendance(
   }
 
   const d = parsed.data;
-  const workDate = new Date(
-    Number(d.workDate.slice(0, 4)),
-    Number(d.workDate.slice(5, 7)) - 1,
-    Number(d.workDate.slice(8, 10)),
-  );
+  const workDate = jstMidnight(d.workDate);
 
   const existing = await prisma.attendance.findUnique({
     where: { userId_workDate: { userId: d.userId, workDate } },

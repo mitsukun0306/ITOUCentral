@@ -5,7 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
-import { yen } from "@/lib/format";
+import { yen, jstMidnight } from "@/lib/format";
 
 async function requireAdmin() {
   const user = await requireUser();
@@ -34,11 +34,7 @@ const eventSchema = z.object({
 export type EventFormState = { error?: string; ok?: boolean };
 
 function toDate(ymd: string): Date {
-  return new Date(
-    Number(ymd.slice(0, 4)),
-    Number(ymd.slice(5, 7)) - 1,
-    Number(ymd.slice(8, 10)),
-  );
+  return jstMidnight(ymd);
 }
 
 export async function createRetreatEvent(

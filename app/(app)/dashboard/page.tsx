@@ -7,16 +7,14 @@ import {
   memberMonthlyPayout,
   PAYROLL_METHOD_LABEL,
 } from "@/lib/payroll";
-import { yen, formatDate } from "@/lib/format";
+import { yen, formatDate, jstYearMonth } from "@/lib/format";
 import { StatusBadge } from "@/components/StatusBadge";
 import { RankBadge } from "@/components/RankBadge";
 
 export default async function DashboardPage() {
   const user = await requireUser();
   const setting = await getSetting();
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
+  const { year, month } = jstYearMonth();
 
   const isAdmin = user.role === "ADMIN";
 

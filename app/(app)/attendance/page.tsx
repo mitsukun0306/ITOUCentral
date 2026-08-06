@@ -1,5 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { monthRange } from "@/lib/payroll";
+import { jstDayStart, toJstDateInput } from "@/lib/format";
 import { AttendancePanel } from "./AttendancePanel";
 
 export default async function AttendancePage({
@@ -24,19 +26,18 @@ export default async function AttendancePage({
     isAdmin && params.member ? params.member : user.id;
 
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const jstYmd = toJstDateInput(now);
+  const [start, end] = monthRange(
+    Number(jstYmd.slice(0, 4)),
+    Number(jstYmd.slice(5, 7)),
+  );
 
   const records = await prisma.attendance.findMany({
     where: { userId: targetId, workDate: { gte: start, lt: end } },
     orderBy: { workDate: "desc" },
   });
 
-  const todayStart = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-  );
+  const todayStart = jstDayStart(now);
   const today = records.find(
     (r) => r.workDate.getTime() === todayStart.getTime(),
   );

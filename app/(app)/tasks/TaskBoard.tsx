@@ -8,7 +8,8 @@ import {
   type TaskFormState,
 } from "./actions";
 import { StatusBadge } from "@/components/StatusBadge";
-import { yen, formatDate } from "@/lib/format";
+import { Countdown } from "@/components/Countdown";
+import { yen, formatDate, toJstDateInput } from "@/lib/format";
 import type { TaskStatus } from "@/lib/generated/prisma";
 
 type TaskDTO = {
@@ -178,7 +179,12 @@ export function TaskBoard({
                           {yen(t.unitPrice * t.quantity)}
                         </span>
                       )}
-                      {t.dueDate && <span>期限: {formatDate(t.dueDate)}</span>}
+                      {t.dueDate && (
+                        <span className="inline-flex items-center gap-1.5">
+                          期限: {formatDate(t.dueDate)}
+                          <Countdown dueIso={t.dueDate} done={t.status === "DONE"} />
+                        </span>
+                      )}
                       {t.payoutYear && t.payoutMonth && (
                         <span className="text-brand">
                           支給月: {t.payoutYear}/{t.payoutMonth}
@@ -262,7 +268,7 @@ function TaskFormModal({
   const [state, formAction, pending] = useActionState(upsertTask, initialState);
 
   const [due, setDue] = useState(
-    task?.dueDate ? task.dueDate.slice(0, 10) : "",
+    task?.dueDate ? toJstDateInput(task.dueDate) : "",
   );
   const [payout, setPayout] = useState(
     task?.payoutYear && task?.payoutMonth

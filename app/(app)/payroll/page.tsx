@@ -6,6 +6,7 @@ import {
   memberMonthlyPayout,
   mealAllowanceForMonth,
 } from "@/lib/payroll";
+import { jstYearMonth } from "@/lib/format";
 import { AdminPayroll } from "./AdminPayroll";
 import { MemberPayroll } from "./MemberPayroll";
 
@@ -16,9 +17,9 @@ export default async function PayrollPage({
 }) {
   const user = await requireUser();
   const params = await searchParams;
-  const now = new Date();
-  const year = params.year ? Number(params.year) : now.getFullYear();
-  const month = params.month ? Number(params.month) : now.getMonth() + 1;
+  const jstNow = jstYearMonth();
+  const year = params.year ? Number(params.year) : jstNow.year;
+  const month = params.month ? Number(params.month) : jstNow.month;
   const setting = await getSetting();
 
   if (user.role === "ADMIN") {

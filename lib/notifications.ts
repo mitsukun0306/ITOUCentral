@@ -19,13 +19,6 @@ export type AppNotification = {
   dueDate: string | null;
 };
 
-const SOON_DAYS = 3; // 「期限が迫っている」とみなす日数
-
-function startOfToday(): Date {
-  const n = new Date();
-  return new Date(n.getFullYear(), n.getMonth(), n.getDate());
-}
-
 /**
  * 現在のユーザー向け通知を、優先度順に並べて返す。
  * - 管理者: 完了申請 → 勤怠変更申請 → 期限超過 → 期限接近
@@ -34,9 +27,9 @@ function startOfToday(): Date {
 export async function getNotifications(
   user: SessionUser,
 ): Promise<AppNotification[]> {
-  const today = startOfToday();
-  const soon = new Date(today);
-  soon.setDate(today.getDate() + SOON_DAYS + 1); // soon の上限(排他)
+  const now = new Date();
+  // 期限の10日前から通知(カウントダウン表示と揃える)
+  const soon = new Date(now.getTime() + 10 * 24 * 60 * 60 * 1000);
 
   const list: AppNotification[] = [];
   const seen = new Set<string>();
@@ -116,7 +109,8 @@ export async function getNotifications(
     if (!t.dueDate || seen.has(t.id)) continue;
     seen.add(t.id);
     const who = isAdmin ? `担当: ${t.assignee?.name ?? "未割当"}` : "";
-    const isOverdue = t.dueDate < today;
+    // 期限(JST 0:00)を過ぎていれば超過。1分でも過ぎたら遅延扱い。
+    const isOverdue = t.dueDate.getTime() <= now.getTime();
     const n: AppNotification = {
       id: `deadline-${t.id}`,
       kind: isOverdue ? "DEADLINE_OVERDUE" : "DEADLINE_SOON",

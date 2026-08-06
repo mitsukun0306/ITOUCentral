@@ -1,16 +1,15 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { mealAllowanceForMonth, monthRange } from "@/lib/payroll";
+import { jstDayStart, jstYearMonth } from "@/lib/format";
 import { BenefitsPanel } from "./BenefitsPanel";
 
 export default async function BenefitsPage() {
   const user = await requireUser();
   const isAdmin = user.role === "ADMIN";
 
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
+  const todayStart = jstDayStart();
+  const { year, month } = jstYearMonth();
 
   // 食事補助: 当月の自分の記録と補助情報
   const [mealStart, mealEnd] = monthRange(year, month);

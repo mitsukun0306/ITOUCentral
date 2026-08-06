@@ -309,10 +309,13 @@ function EditModal({
 
   const toHHMM = (iso: string | null) => {
     if (!iso) return "";
-    const d = new Date(iso);
-    return `${String(d.getHours()).padStart(2, "0")}:${String(
-      d.getMinutes(),
-    ).padStart(2, "0")}`;
+    // 閲覧者のタイムゾーンに依らず JST の時刻を返す
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Tokyo",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date(iso));
   };
 
   return (

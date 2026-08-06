@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
+import { jstMidnight } from "@/lib/format";
 import type { TaskStatus } from "@/lib/generated/prisma";
 
 const STATUS_LABEL: Record<TaskStatus, string> = {
@@ -64,7 +65,8 @@ export async function upsertTask(
 
   const d = parsed.data;
   const assigneeId = d.assigneeId && d.assigneeId !== "" ? d.assigneeId : null;
-  const dueDate = d.dueDate ? new Date(d.dueDate) : null;
+  // 期限はその日の JST 0:00 に設定(1分でも過ぎたら遅延扱い)
+  const dueDate = d.dueDate ? jstMidnight(d.dueDate) : null;
   // 支給月 "YYYY-MM" を分解(未指定なら null)
   let payoutYear: number | null = null;
   let payoutMonth: number | null = null;
