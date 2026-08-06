@@ -24,6 +24,9 @@ type TaskDTO = {
   quantity: number;
   payoutYear: number | null;
   payoutMonth: number | null;
+  penalty24: number | null;
+  penalty72: number | null;
+  penaltyOver: number | null;
   dueDate: string | null;
 };
 
@@ -451,6 +454,47 @@ function TaskFormModal({
           <p className="text-xs text-gray-400 -mt-2">
             支給月は期限の月から2ヶ月先まで選べます。未指定なら完了した月に計上されます。
           </p>
+
+          <div className="rounded-lg bg-gray-50 border border-gray-100 p-3 space-y-3">
+            <p className="text-xs text-gray-500">
+              納品遅延時の支給率(%)。空欄なら既定(24h:50 / 3日未満:33 / 3日以降:0)。
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="超過24h以内">
+                <input
+                  name="penalty24"
+                  type="number"
+                  min={0}
+                  max={100}
+                  placeholder="50"
+                  defaultValue={task?.penalty24 ?? ""}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="超過3日未満">
+                <input
+                  name="penalty72"
+                  type="number"
+                  min={0}
+                  max={100}
+                  placeholder="33"
+                  defaultValue={task?.penalty72 ?? ""}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="超過3日以降">
+                <input
+                  name="penaltyOver"
+                  type="number"
+                  min={0}
+                  max={100}
+                  placeholder="0"
+                  defaultValue={task?.penaltyOver ?? ""}
+                  className={inputCls}
+                />
+              </Field>
+            </div>
+          </div>
 
           {state.error && (
             <p className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">

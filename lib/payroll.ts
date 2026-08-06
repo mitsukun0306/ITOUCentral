@@ -76,24 +76,47 @@ export function taskAmount(task: Task, method: PayrollMethod): number {
   }
 }
 
-/**
- * 納品(完了)遅延による報酬倍率。
- * - 期限内 / 期限なし: ×1
- * - 超過24時間以内     : ×1/2
- * - 超過3日未満        : ×1/3
- * - 超過3日以降        : ×0
- */
-export function lateInfo(task: {
+export type PenaltyTask = {
   dueDate: Date | null;
   completedAt: Date | null;
-}): { mult: number; label: string | null } {
+  penalty24?: number | null;
+  penalty72?: number | null;
+  penaltyOver?: number | null;
+};
+
+/** タスクの各段階の支給率(0〜1)。未設定なら既定(1/2, 1/3, 0)。 */
+export function penaltyRates(task: PenaltyTask): {
+  r24: number;
+  r72: number;
+  rOver: number;
+} {
+  return {
+    r24: task.penalty24 == null ? 1 / 2 : task.penalty24 / 100,
+    r72: task.penalty72 == null ? 1 / 3 : task.penalty72 / 100,
+    rOver: task.penaltyOver == null ? 0 : task.penaltyOver / 100,
+  };
+}
+
+/**
+ * 納品(完了)遅延による報酬倍率。段階はタスクごとに管理者が設定可能。
+ * - 期限内 / 期限なし: ×1
+ * - 超過24時間以内 / 3日未満 / 3日以降: タスク設定(既定 1/2 / 1/3 / 0)
+ */
+export function lateInfo(task: PenaltyTask): {
+  mult: number;
+  label: string | null;
+} {
   if (!task.dueDate || !task.completedAt) return { mult: 1, label: null };
   const late = task.completedAt.getTime() - task.dueDate.getTime();
   if (late <= 0) return { mult: 1, label: null };
   const H = 3_600_000;
-  if (late <= 24 * H) return { mult: 1 / 2, label: "24時間超過(報酬1/2)" };
-  if (late < 72 * H) return { mult: 1 / 3, label: "3日未満超過(報酬1/3)" };
-  return { mult: 0, label: "3日以上超過(報酬なし)" };
+  const { r24, r72, rOver } = penaltyRates(task);
+  const pct = (r: number) => `${Math.round(r * 100)}%`;
+  if (late <= 24 * H)
+    return { mult: r24, label: `24時間超過(報酬${pct(r24)})` };
+  if (late < 72 * H)
+    return { mult: r72, label: `3日未満超過(報酬${pct(r72)})` };
+  return { mult: rOver, label: `3日以上超過(報酬${pct(rOver)})` };
 }
 
 /** 遅延減額を反映した実支給の報酬額(整数円・切り捨て) */

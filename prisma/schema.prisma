@@ -77,6 +77,11 @@ model Task {
   payoutYear  Int?
   payoutMonth Int?
 
+  // 納品遅延による報酬の支給率(%)。未設定なら既定(24h:50 / 3日未満:1/3 / 3日以降:0)。
+  penalty24   Int? // 超過24時間以内
+  penalty72   Int? // 超過3日未満
+  penaltyOver Int? // 超過3日以降
+
   dueDate     DateTime?
   completedAt DateTime?
   createdAt   DateTime  @default(now())

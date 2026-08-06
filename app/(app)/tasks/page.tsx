@@ -36,6 +36,9 @@ export default async function TasksPage() {
         quantity: t.quantity,
         payoutYear: t.payoutYear,
         payoutMonth: t.payoutMonth,
+        penalty24: t.penalty24,
+        penalty72: t.penalty72,
+        penaltyOver: t.penaltyOver,
         dueDate: t.dueDate ? t.dueDate.toISOString() : null,
       }))}
       members={members}

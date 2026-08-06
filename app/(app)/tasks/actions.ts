@@ -15,6 +15,11 @@ const STATUS_LABEL: Record<TaskStatus, string> = {
   DONE: "完了",
 };
 
+/** フォーム値: 空文字は undefined(=既定)に */
+function emptyToUndef(v: FormDataEntryValue | null): string | undefined {
+  return v === null || v === "" ? undefined : String(v);
+}
+
 const upsertSchema = z.object({
   id: z.string().optional(),
   title: z.string().min(1, "タイトルは必須です"),
@@ -30,6 +35,10 @@ const upsertSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}$/)
     .optional(),
+  // 納品遅延の支給率(%)。空なら既定。
+  penalty24: z.coerce.number().int().min(0).max(100).optional(),
+  penalty72: z.coerce.number().int().min(0).max(100).optional(),
+  penaltyOver: z.coerce.number().int().min(0).max(100).optional(),
 });
 
 export type TaskFormState = { error?: string; ok?: boolean };
@@ -57,6 +66,9 @@ export async function upsertTask(
     quantity: formData.get("quantity") || 0,
     dueDate: formData.get("dueDate") || undefined,
     payoutMonth: formData.get("payoutMonth") || undefined,
+    penalty24: emptyToUndef(formData.get("penalty24")),
+    penalty72: emptyToUndef(formData.get("penalty72")),
+    penaltyOver: emptyToUndef(formData.get("penaltyOver")),
   });
 
   if (!parsed.success) {
@@ -95,6 +107,9 @@ export async function upsertTask(
     quantity: d.quantity,
     payoutYear,
     payoutMonth,
+    penalty24: d.penalty24 ?? null,
+    penalty72: d.penalty72 ?? null,
+    penaltyOver: d.penaltyOver ?? null,
     dueDate,
     completedAt,
   };
