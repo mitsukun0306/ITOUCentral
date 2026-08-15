@@ -83,6 +83,7 @@ model Task {
   penaltyOver Int? // 超過3日以降
 
   dueDate     DateTime?
+  submittedAt DateTime? // 完了申請した時刻(報酬の仮確定・期限カウント停止の基準)
   completedAt DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

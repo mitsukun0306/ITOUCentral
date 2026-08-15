@@ -28,6 +28,9 @@ type TaskDTO = {
   penalty72: number | null;
   penaltyOver: number | null;
   dueDate: string | null;
+  submittedAt: string | null;
+  provisionalReward: number | null;
+  penaltyLabel: string | null;
 };
 
 type Member = { id: string; name: string };
@@ -48,7 +51,17 @@ const STATUS_ACTIVE_CLS: Record<TaskStatus, string> = {
   DONE: "bg-green-600 border-green-600 text-white",
 };
 
-/** 色付きのステータス切替ボタン群。メンバーは完了(DONE)を選べず、代わりに完了申請(REVIEW)まで。 */
+// メンバーが行える前進遷移のみ(戻し不可)
+const MEMBER_NEXT: Partial<Record<TaskStatus, TaskStatus>> = {
+  TODO: "IN_PROGRESS",
+  IN_PROGRESS: "REVIEW",
+};
+
+/**
+ * 色付きのステータス切替ボタン群。
+ * - 管理者: 4状態を自由に変更。
+ * - メンバー: 現在の状態(表示のみ)+ 前進できる次の1手のみ。未着手への差し戻し不可。
+ */
 function StatusButtons({
   status,
   isAdmin,
@@ -58,35 +71,46 @@ function StatusButtons({
   isAdmin: boolean;
   onChange: (s: TaskStatus) => void;
 }) {
-  const options: TaskStatus[] = isAdmin
-    ? ["TODO", "IN_PROGRESS", "REVIEW", "DONE"]
-    : ["TODO", "IN_PROGRESS", "REVIEW"];
+  const btn = (s: TaskStatus, label: string, active: boolean, clickable: boolean) => (
+    <button
+      key={s}
+      type="button"
+      aria-pressed={active}
+      disabled={!clickable}
+      onClick={() => clickable && onChange(s)}
+      className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
+        active
+          ? STATUS_ACTIVE_CLS[s]
+          : clickable
+            ? "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+            : "bg-gray-50 text-gray-300 border-gray-200 cursor-not-allowed"
+      }`}
+    >
+      {label}
+    </button>
+  );
 
+  if (isAdmin) {
+    const options: TaskStatus[] = ["TODO", "IN_PROGRESS", "REVIEW", "DONE"];
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((s) => btn(s, STATUS_LABEL[s], status === s, status !== s))}
+      </div>
+    );
+  }
+
+  // メンバー: 現在の状態 + 次の1手のみ
+  const next = MEMBER_NEXT[status];
   return (
     <div className="flex flex-wrap gap-1.5">
-      {options.map((s) => {
-        const active = status === s;
-        // メンバー視点では REVIEW ボタンは「完了申請」というアクション表記にする
-        let label = STATUS_LABEL[s];
-        if (!isAdmin && s === "REVIEW") label = active ? "申請中" : "完了申請";
-        return (
-          <button
-            key={s}
-            type="button"
-            aria-pressed={active}
-            onClick={() => {
-              if (!active) onChange(s);
-            }}
-            className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${
-              active
-                ? STATUS_ACTIVE_CLS[s]
-                : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
-            }`}
-          >
-            {label}
-          </button>
-        );
-      })}
+      {btn(status, STATUS_LABEL[status], true, false)}
+      {next &&
+        btn(
+          next,
+          next === "REVIEW" ? "完了申請" : STATUS_LABEL[next],
+          false,
+          true,
+        )}
     </div>
   );
 }
@@ -105,6 +129,7 @@ export function TaskBoard({
   const [editing, setEditing] = useState<TaskDTO | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [filter, setFilter] = useState<TaskStatus | "ALL">("ALL");
+  const [consentTask, setConsentTask] = useState<TaskDTO | null>(null);
   const [, startTransition] = useTransition();
 
   // 期限超過判定用の時刻(クライアント確定後にのみ有効化しハイドレーション不一致を回避)
@@ -114,11 +139,21 @@ export function TaskBoard({
     const id = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(id);
   }, []);
+  // 期限超過の派手な演出は「未着手・進行中」の未納品タスクのみ(申請済みは一時停止)
   const isOverdue = (t: TaskDTO) =>
     now !== null &&
-    t.status !== "DONE" &&
+    (t.status === "TODO" || t.status === "IN_PROGRESS") &&
     !!t.dueDate &&
     new Date(t.dueDate).getTime() <= now;
+
+  // ステータス変更。メンバーの「未着手→進行中」は同意事項を挟む。
+  const handleStatusChange = (t: TaskDTO, s: TaskStatus) => {
+    if (!isAdmin && t.status === "TODO" && s === "IN_PROGRESS") {
+      setConsentTask(t);
+      return;
+    }
+    startTransition(() => updateTaskStatus(t.id, s));
+  };
 
   const visible = tasks.filter((t) => filter === "ALL" || t.status === filter);
 
@@ -216,6 +251,9 @@ export function TaskBoard({
                           <Countdown
                             dueIso={t.dueDate}
                             done={t.status === "DONE"}
+                            frozenIso={
+                              t.status === "REVIEW" ? t.submittedAt : null
+                            }
                           />
                         </span>
                       )}
@@ -226,18 +264,30 @@ export function TaskBoard({
                       )}
                     </div>
 
+                    {t.status === "REVIEW" && t.provisionalReward !== null && (
+                      <p className="text-[12px] mt-2 inline-block rounded-md bg-blue-50 text-blue-700 px-2 py-1">
+                        仮確定報酬: <b>{yen(t.provisionalReward)}</b>
+                        {t.penaltyLabel && (
+                          <span className="text-red-600 ml-1">
+                            ({t.penaltyLabel})
+                          </span>
+                        )}
+                        <span className="text-blue-400 ml-1">
+                          ・期限カウント停止中
+                        </span>
+                      </p>
+                    )}
+
                     {canEditStatus(t) && (
                       <div className="mt-2.5">
                         <StatusButtons
                           status={t.status}
                           isAdmin={isAdmin}
-                          onChange={(s) =>
-                            startTransition(() => updateTaskStatus(t.id, s))
-                          }
+                          onChange={(s) => handleStatusChange(t, s)}
                         />
                         {!isAdmin && t.status === "REVIEW" && (
                           <p className="text-[11px] text-blue-600 mt-1">
-                            完了申請中です。管理者の承認をお待ちください。
+                            完了申請中です。管理者の承認をお待ちください(取り消し不可)。
                           </p>
                         )}
                       </div>
@@ -284,6 +334,89 @@ export function TaskBoard({
           onClose={() => setShowForm(false)}
         />
       )}
+
+      {consentTask && (
+        <ConsentModal
+          task={consentTask}
+          onCancel={() => setConsentTask(null)}
+          onAgree={() => {
+            const id = consentTask.id;
+            setConsentTask(null);
+            startTransition(() => updateTaskStatus(id, "IN_PROGRESS"));
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ConsentModal({
+  task,
+  onAgree,
+  onCancel,
+}: {
+  task: TaskDTO;
+  onAgree: () => void;
+  onCancel: () => void;
+}) {
+  const [checked, setChecked] = useState(false);
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h2 className="font-semibold">着手前の同意事項</h2>
+          <p className="text-xs text-gray-500 mt-1">「{task.title}」を開始します</p>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-gray-700 space-y-2">
+            <p className="font-medium text-amber-800">
+              以下に同意のうえ着手してください。
+            </p>
+            <ul className="list-disc pl-5 space-y-1.5">
+              <li>
+                <b>期限(納品期日)を必ず厳守</b>します。期限はその日の 0:00
+                です。
+              </li>
+              <li>
+                <b>いかなる理由があっても期限超過は認められません。</b>
+                超過した場合は規定に従い報酬が減額(超過24時間以内は原則1/2、3日未満は1/3、3日以降は0)されることに同意します。
+              </li>
+              <li>
+                一度着手すると<b>「未着手」へ戻すことはできません。</b>
+              </li>
+              <li>
+                完了申請を行った時点で<b>報酬が仮確定</b>し、期限カウントが停止します。申請後の取り消しはできません。
+              </li>
+            </ul>
+          </div>
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(e) => setChecked(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span>上記の内容をすべて確認し、同意します。</span>
+          </label>
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-4 py-2 text-sm rounded-lg border border-gray-200 hover:bg-gray-50"
+            >
+              キャンセル
+            </button>
+            <button
+              type="button"
+              disabled={!checked}
+              onClick={onAgree}
+              className="px-4 py-2 text-sm rounded-lg bg-brand text-white hover:bg-brand-dark disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              同意して進行中にする
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

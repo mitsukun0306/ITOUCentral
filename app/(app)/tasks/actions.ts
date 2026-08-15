@@ -97,6 +97,11 @@ export async function upsertTask(
   if (d.status === "DONE" && !completedAt) completedAt = new Date();
   if (d.status !== "DONE") completedAt = null;
 
+  // 申請時刻: REVIEW で確定、TODO/IN_PROGRESS に戻すとクリア、DONE では維持
+  let submittedAt = existing?.submittedAt ?? null;
+  if (d.status === "REVIEW") submittedAt = existing?.submittedAt ?? new Date();
+  else if (d.status !== "DONE") submittedAt = null;
+
   const data = {
     title: d.title,
     description: d.description ?? null,
@@ -111,6 +116,7 @@ export async function upsertTask(
     penalty72: d.penalty72 ?? null,
     penaltyOver: d.penaltyOver ?? null,
     dueDate,
+    submittedAt,
     completedAt,
   };
 
@@ -137,18 +143,27 @@ export async function updateTaskStatus(taskId: string, status: TaskStatus) {
   const isAdmin = user.role === "ADMIN";
   if (!isAdmin) {
     if (task.assigneeId !== user.id) throw new Error("権限がありません");
-    // メンバーは「完了(DONE)」を直接設定できない。完了は申請(REVIEW)まで。
-    if (status === "DONE") {
-      throw new Error("完了は管理者の承認が必要です。完了申請を行ってください");
+    // メンバーが行える遷移は「未着手→進行中」「進行中→完了申請」のみ(前進のみ)。
+    const allowed =
+      (task.status === "TODO" && status === "IN_PROGRESS") ||
+      (task.status === "IN_PROGRESS" && status === "REVIEW");
+    if (!allowed) {
+      throw new Error("この操作は許可されていません");
     }
   }
 
   const completedAt =
     status === "DONE" ? (task.completedAt ?? new Date()) : null;
 
+  // 完了申請(REVIEW)で申請時刻を確定=報酬の仮確定・期限カウント停止。
+  // TODO/IN_PROGRESS へ戻すとクリア。DONE では申請時刻を維持。
+  let submittedAt = task.submittedAt;
+  if (status === "REVIEW") submittedAt = task.submittedAt ?? new Date();
+  else if (status !== "DONE") submittedAt = null;
+
   await prisma.task.update({
     where: { id: taskId },
-    data: { status, completedAt },
+    data: { status, completedAt, submittedAt },
   });
   await logAudit(
     user,

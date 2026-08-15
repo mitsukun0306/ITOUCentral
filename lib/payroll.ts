@@ -79,6 +79,7 @@ export function taskAmount(task: Task, method: PayrollMethod): number {
 export type PenaltyTask = {
   dueDate: Date | null;
   completedAt: Date | null;
+  submittedAt?: Date | null;
   penalty24?: number | null;
   penalty72?: number | null;
   penaltyOver?: number | null;
@@ -106,8 +107,10 @@ export function lateInfo(task: PenaltyTask): {
   mult: number;
   label: string | null;
 } {
-  if (!task.dueDate || !task.completedAt) return { mult: 1, label: null };
-  const late = task.completedAt.getTime() - task.dueDate.getTime();
+  // 納品時刻 = 完了申請した時刻(仮確定)を優先。なければ完了時刻。
+  const deliver = task.submittedAt ?? task.completedAt;
+  if (!task.dueDate || !deliver) return { mult: 1, label: null };
+  const late = deliver.getTime() - task.dueDate.getTime();
   if (late <= 0) return { mult: 1, label: null };
   const H = 3_600_000;
   const { r24, r72, rOver } = penaltyRates(task);
