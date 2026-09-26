@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useTransition, useActionState, useEffect } from "react";
+import {
+  useState,
+  useTransition,
+  useActionState,
+  useEffect,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
 import {
   createRetreatEvent,
   deleteRetreatEvent,
@@ -10,6 +17,7 @@ import {
   deleteExpense,
   submitMeal,
   deleteMeal,
+  getMealReceipt,
   type EventFormState,
   type ExpenseFormState,
   type MealFormState,
@@ -23,8 +31,16 @@ type MealDTO = {
   id: string;
   date: string;
   amount: number;
-  item: string;
-  place: string;
+  hasReceipt: boolean;
+};
+
+type AllMealDTO = {
+  id: string;
+  userName: string;
+  date: string;
+  amount: number;
+  hasReceipt: boolean;
+  createdAt: string;
 };
 
 type EventDTO = {
@@ -66,6 +82,7 @@ export function BenefitsPanel({
   month,
   meals,
   mealInfo,
+  allMeals,
 }: {
   isAdmin: boolean;
   events: EventDTO[];
@@ -74,6 +91,7 @@ export function BenefitsPanel({
   month: number;
   meals: MealDTO[];
   mealInfo: MealAllowance;
+  allMeals: AllMealDTO[];
 }) {
   const [showEvent, setShowEvent] = useState(false);
   const [, startTransition] = useTransition();
@@ -197,6 +215,7 @@ export function BenefitsPanel({
             />
           </div>
         </div>
+        {isAdmin && <AdminMealHistory meals={allMeals} />}
       </section>
 
       {showEvent && isAdmin && (
@@ -242,7 +261,7 @@ function MealSummary({
         </div>
       </div>
       <p className="text-xs text-gray-400 mt-3">
-        月10日以上、食費・食べたもの・場所を申請すると、ランクの限度額内で申請額が報酬に加算されます({year}年{month}月)。
+        月10日以上、日付・金額と領収書の写真を申請すると、ランクの限度額内で申請額が報酬に加算されます({year}年{month}月)。
       </p>
     </div>
   );
@@ -259,21 +278,103 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 const mealInitial: MealFormState = {};
 
+/** 領収書写真をブラウザ側でリサイズ&圧縮してJPEGにする(DB容量対策)。 */
+async function compressReceiptImage(
+  file: File,
+  maxDim = 1600,
+  quality = 0.72,
+): Promise<Blob> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("canvas unsupported");
+  ctx.drawImage(bitmap, 0, 0, width, height);
+
+  const blob: Blob | null = await new Promise((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", quality),
+  );
+  if (!blob) throw new Error("compress failed");
+  return blob;
+}
+
+const RECEIPT_SOURCE_MAX_BYTES = 15 * 1024 * 1024; // 圧縮前の元ファイルの上限(端末側の安全弁)
+
 function MealForm({ year, month }: { year: number; month: number }) {
-  const [state, action, pending] = useActionState(submitMeal, mealInitial);
+  const [state, formAction, pending] = useActionState(submitMeal, mealInitial);
+  const [, startTransition] = useTransition();
   const [formKey, setFormKey] = useState(0);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [receiptBlob, setReceiptBlob] = useState<Blob | null>(null);
+  const [receiptError, setReceiptError] = useState<string | null>(null);
+  const [compressing, setCompressing] = useState(false);
+
   useEffect(() => {
-    if (state.ok) setFormKey((k) => k + 1);
+    if (state.ok) {
+      setFormKey((k) => k + 1);
+      setPreview(null);
+      setReceiptBlob(null);
+      setReceiptError(null);
+    }
   }, [state.ok]);
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
 
   const defaultDate = `${year}-${String(month).padStart(2, "0")}-${String(
     new Date().getDate(),
   ).padStart(2, "0")}`;
 
+  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    setReceiptError(null);
+    setReceiptBlob(null);
+    if (preview) URL.revokeObjectURL(preview);
+    setPreview(null);
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setReceiptError("画像ファイルを選択してください");
+      return;
+    }
+    if (file.size > RECEIPT_SOURCE_MAX_BYTES) {
+      setReceiptError("画像サイズが大きすぎます(15MB以下にしてください)");
+      return;
+    }
+    setCompressing(true);
+    try {
+      const compressed = await compressReceiptImage(file);
+      setReceiptBlob(compressed);
+      setPreview(URL.createObjectURL(compressed));
+    } catch {
+      setReceiptError("画像の読み込みに失敗しました。別の画像でお試しください");
+    } finally {
+      setCompressing(false);
+    }
+  }
+
+  function handleSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!receiptBlob) {
+      setReceiptError("領収書の写真を選択してください");
+      return;
+    }
+    const fd = new FormData(e.currentTarget);
+    fd.set("receipt", receiptBlob, "receipt.jpg");
+    startTransition(() => formAction(fd));
+  }
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 h-fit">
       <h3 className="font-semibold mb-3">食費を申請</h3>
-      <form key={formKey} action={action} className="space-y-3">
+      <form key={formKey} onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <span className="block text-sm font-medium mb-1">
@@ -302,29 +403,32 @@ function MealForm({ year, month }: { year: number; month: number }) {
         </div>
         <label className="block">
           <span className="block text-sm font-medium mb-1">
-            食べたもの <span className="text-red-500">*</span>
+            領収書の写真 <span className="text-red-500">*</span>
           </span>
           <input
-            name="item"
-            required
-            placeholder="例: 定食ランチ"
-            className={inputCls}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleFileChange}
+            className="block w-full text-sm text-gray-600"
           />
-        </label>
-        <label className="block">
-          <span className="block text-sm font-medium mb-1">
-            場所 <span className="text-red-500">*</span>
+          <span className="block text-xs text-gray-400 mt-1">
+            送信前に自動で圧縮されます(端末容量への影響は最小限)
           </span>
-          <input
-            name="place"
-            required
-            placeholder="例: 〇〇食堂"
-            className={inputCls}
-          />
         </label>
-        {state.error && (
+        {compressing && (
+          <p className="text-sm text-gray-500">画像を圧縮中...</p>
+        )}
+        {preview && (
+          <img
+            src={preview}
+            alt="領収書プレビュー"
+            className="max-h-40 rounded-lg border border-gray-200"
+          />
+        )}
+        {(receiptError || state.error) && (
           <p className="text-sm text-red-600 bg-red-50 rounded-md px-3 py-2">
-            {state.error}
+            {receiptError || state.error}
           </p>
         )}
         {state.ok && (
@@ -334,13 +438,85 @@ function MealForm({ year, month }: { year: number; month: number }) {
         )}
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || compressing}
           className="w-full rounded-lg bg-brand text-white py-2 text-sm font-medium hover:bg-brand-dark disabled:opacity-60"
         >
           {pending ? "申請中..." : "申請する"}
         </button>
       </form>
     </div>
+  );
+}
+
+/** 領収書画像を必要になった時だけ取得して表示するモーダル */
+function ReceiptModal({
+  id,
+  onClose,
+}: {
+  id: string;
+  onClose: () => void;
+}) {
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getMealReceipt(id).then((res) => {
+      if (!active) return;
+      if ("error" in res) setError(res.error);
+      else setDataUrl(res.dataUrl);
+    });
+    return () => {
+      active = false;
+    };
+  }, [id]);
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-xl max-w-lg w-full p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold">領収書</h3>
+          <button onClick={onClose} className="text-gray-400 text-xl">
+            ×
+          </button>
+        </div>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        {!error && !dataUrl && (
+          <p className="text-sm text-gray-400">読み込み中...</p>
+        )}
+        {dataUrl && (
+          <img
+            src={dataUrl}
+            alt="領収書"
+            className="w-full max-h-[70vh] object-contain rounded-lg"
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReceiptButton({ id, hasReceipt }: { id: string; hasReceipt: boolean }) {
+  const [open, setOpen] = useState(false);
+  if (!hasReceipt) {
+    return <span className="text-xs text-gray-400">領収書なし</span>;
+  }
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="text-xs text-brand hover:underline shrink-0"
+      >
+        領収書を見る
+      </button>
+      {open && <ReceiptModal id={id} onClose={() => setOpen(false)} />}
+    </>
   );
 }
 
@@ -369,21 +545,58 @@ function MealList({
             >
               <div className="min-w-0">
                 <p className="font-medium truncate">
-                  {m.item}
+                  {formatDate(m.date)}
+                  <span className="ml-2 font-semibold text-brand">
+                    {yen(m.amount)}
+                  </span>
+                </p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <ReceiptButton id={m.id} hasReceipt={m.hasReceipt} />
+                <button
+                  onClick={() => onDelete(m.id)}
+                  className="text-red-500 text-xs hover:underline"
+                >
+                  削除
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function AdminMealHistory({ meals }: { meals: AllMealDTO[] }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-100">
+        <h3 className="font-semibold">食事補助 申請履歴(全メンバー・最新200件)</h3>
+      </div>
+      {meals.length === 0 ? (
+        <p className="px-4 py-8 text-center text-sm text-gray-400">
+          申請はまだありません
+        </p>
+      ) : (
+        <ul className="divide-y divide-gray-100">
+          {meals.map((m) => (
+            <li
+              key={m.id}
+              className="px-4 py-2.5 flex items-center justify-between gap-3"
+            >
+              <div className="min-w-0">
+                <p className="font-medium truncate">
+                  {m.userName}
                   <span className="ml-2 font-semibold text-brand">
                     {yen(m.amount)}
                   </span>
                 </p>
                 <p className="text-xs text-gray-400">
-                  {formatDate(m.date)} ・ {m.place}
+                  {formatDate(m.date)} ・ 申請: {formatDate(m.createdAt)}
                 </p>
               </div>
-              <button
-                onClick={() => onDelete(m.id)}
-                className="text-red-500 text-xs hover:underline shrink-0"
-              >
-                削除
-              </button>
+              <ReceiptButton id={m.id} hasReceipt={m.hasReceipt} />
             </li>
           ))}
         </ul>

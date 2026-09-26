@@ -19,6 +19,15 @@ export default async function BenefitsPage() {
   });
   const mealInfo = await mealAllowanceForMonth(user.id, year, month);
 
+  // 管理者: 全メンバーの食事補助申請履歴(直近200件)
+  const allMeals = isAdmin
+    ? await prisma.mealRecord.findMany({
+        orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+        take: 200,
+        include: { user: { select: { name: true } } },
+      })
+    : [];
+
   // イベントは今日以降を優先しつつ全件(過去も見えるように昇順)
   const events = await prisma.retreatEvent.findMany({
     orderBy: { startDate: "asc" },
@@ -59,10 +68,17 @@ export default async function BenefitsPage() {
         id: m.id,
         date: m.date.toISOString(),
         amount: m.amount,
-        item: m.item,
-        place: m.place,
+        hasReceipt: !!m.receiptImage,
       }))}
       mealInfo={mealInfo}
+      allMeals={allMeals.map((m) => ({
+        id: m.id,
+        userName: m.user.name,
+        date: m.date.toISOString(),
+        amount: m.amount,
+        hasReceipt: !!m.receiptImage,
+        createdAt: m.createdAt.toISOString(),
+      }))}
     />
   );
 }

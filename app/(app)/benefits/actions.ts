@@ -171,16 +171,21 @@ export async function deleteExpense(id: string) {
 
 // ---------- 食事補助 ----------
 
+const MEAL_RECEIPT_MAX_BYTES = 4 * 1024 * 1024; // 4MB(ブラウザ側で圧縮済みの前提)
+const MEAL_RECEIPT_ALLOWED_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
 const mealSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日付を入力してください"),
   amount: z.coerce.number().int().min(1, "金額を入力してください"),
-  item: z.string().min(1, "食べたものを入力してください"),
-  place: z.string().min(1, "場所を入力してください"),
 });
 
 export type MealFormState = { error?: string; ok?: boolean };
 
-/** 食事補助の記録を申請(1日1件相当。日々追加していく) */
+/** 食事補助の記録を申請(領収書の写真を添付。1日1件相当で日々追加していく) */
 export async function submitMeal(
   _prev: MealFormState,
   formData: FormData,
@@ -189,23 +194,34 @@ export async function submitMeal(
   const parsed = mealSchema.safeParse({
     date: formData.get("date"),
     amount: formData.get("amount"),
-    item: formData.get("item"),
-    place: formData.get("place"),
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "入力エラー" };
   }
+
+  const receipt = formData.get("receipt");
+  if (!(receipt instanceof File) || receipt.size === 0) {
+    return { error: "領収書の写真を選択してください" };
+  }
+  if (!MEAL_RECEIPT_ALLOWED_TYPES.has(receipt.type)) {
+    return { error: "画像ファイル(JPEG/PNG/WebP)を選択してください" };
+  }
+  if (receipt.size > MEAL_RECEIPT_MAX_BYTES) {
+    return { error: "画像サイズが大きすぎます(4MB以下にしてください)" };
+  }
+
   const d = parsed.data;
+  const buffer = Buffer.from(await receipt.arrayBuffer());
   await prisma.mealRecord.create({
     data: {
       userId: user.id,
       date: toDate(d.date),
       amount: d.amount,
-      item: d.item,
-      place: d.place,
+      receiptImage: buffer,
+      receiptMime: receipt.type,
     },
   });
-  await logAudit(user, "食事補助の申請", `${d.item} ${yen(d.amount)}`);
+  await logAudit(user, "食事補助の申請", `${yen(d.amount)}(領収書添付)`);
   revalidatePath("/benefits");
   revalidatePath("/dashboard");
   revalidatePath("/payroll");
@@ -221,8 +237,28 @@ export async function deleteMeal(id: string) {
     throw new Error("権限がありません");
   }
   await prisma.mealRecord.delete({ where: { id } });
-  await logAudit(user, "食事補助の削除", rec.item);
+  await logAudit(user, "食事補助の削除", yen(rec.amount));
   revalidatePath("/benefits");
   revalidatePath("/dashboard");
   revalidatePath("/payroll");
+}
+
+/** 食事記録に添付された領収書画像を取得(本人 or 管理者のみ)。一覧を軽くするため必要時に個別取得する。 */
+export async function getMealReceipt(
+  id: string,
+): Promise<{ dataUrl: string } | { error: string }> {
+  const user = await requireUser();
+  const rec = await prisma.mealRecord.findUnique({
+    where: { id },
+    select: { userId: true, receiptImage: true, receiptMime: true },
+  });
+  if (!rec) return { error: "記録が見つかりません" };
+  if (user.role !== "ADMIN" && rec.userId !== user.id) {
+    return { error: "権限がありません" };
+  }
+  if (!rec.receiptImage || !rec.receiptMime) {
+    return { error: "領収書画像がありません" };
+  }
+  const base64 = Buffer.from(rec.receiptImage).toString("base64");
+  return { dataUrl: `data:${rec.receiptMime};base64,${base64}` };
 }
