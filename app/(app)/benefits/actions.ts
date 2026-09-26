@@ -5,7 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
-import { yen, jstMidnight } from "@/lib/format";
+import { yen, jstMidnight, formatDate } from "@/lib/format";
 
 async function requireAdmin() {
   const user = await requireUser();
@@ -228,19 +228,52 @@ export async function submitMeal(
   return { ok: true };
 }
 
-/** 食事記録の削除(本人 or 管理者) */
+/** 食事記録の削除/取消。本人は承認待ちのみ、管理者は任意に削除可。 */
 export async function deleteMeal(id: string) {
   const user = await requireUser();
   const rec = await prisma.mealRecord.findUnique({ where: { id } });
   if (!rec) throw new Error("記録が見つかりません");
-  if (user.role !== "ADMIN" && rec.userId !== user.id) {
-    throw new Error("権限がありません");
+  const isAdmin = user.role === "ADMIN";
+  if (!isAdmin) {
+    if (rec.userId !== user.id) throw new Error("権限がありません");
+    if (rec.status !== "PENDING") {
+      throw new Error("承認/却下済みの申請は取り消せません");
+    }
   }
   await prisma.mealRecord.delete({ where: { id } });
-  await logAudit(user, "食事補助の削除", yen(rec.amount));
+  await logAudit(
+    user,
+    isAdmin ? "食事補助の削除(管理者)" : "食事補助の取消",
+    yen(rec.amount),
+  );
   revalidatePath("/benefits");
   revalidatePath("/dashboard");
   revalidatePath("/payroll");
+}
+
+async function decideMeal(id: string, status: "APPROVED" | "REJECTED") {
+  const admin = await requireAdmin();
+  const rec = await prisma.mealRecord.update({
+    where: { id },
+    data: { status, decidedAt: new Date() },
+    include: { user: { select: { name: true } } },
+  });
+  await logAudit(
+    admin,
+    status === "APPROVED" ? "食事補助承認" : "食事補助却下",
+    `${rec.user.name} / ${formatDate(rec.date)} ${yen(rec.amount)}`,
+  );
+  revalidatePath("/benefits");
+  revalidatePath("/dashboard");
+  revalidatePath("/payroll");
+}
+
+export async function approveMeal(id: string) {
+  await decideMeal(id, "APPROVED");
+}
+
+export async function rejectMeal(id: string) {
+  await decideMeal(id, "REJECTED");
 }
 
 /** 食事記録に添付された領収書画像を取得(本人 or 管理者のみ)。一覧を軽くするため必要時に個別取得する。 */

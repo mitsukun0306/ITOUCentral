@@ -161,18 +161,21 @@ model RetreatEvent {
 
 /// 福利厚生: 食事補助の記録(メンバーが日々申請。領収書の写真を添付する運用)
 model MealRecord {
-  id           String   @id @default(cuid())
+  id           String        @id @default(cuid())
   userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   date         DateTime // 食事日
-  amount       Int      @default(0) // 食費(円)
+  amount       Int           @default(0) // 食費(円)
   item         String? // 旧フォームの入力(廃止。過去データ表示用に残置)
   place        String? // 旧フォームの入力(廃止。過去データ表示用に残置)
   receiptImage Bytes? // 領収書の写真(ブラウザ側で圧縮済み)
   receiptMime  String? // 領収書画像のMIMEタイプ
-  createdAt    DateTime @default(now())
+  status       ExpenseStatus @default(PENDING) // 管理者の承認/却下。承認済みのみ報酬に計上
+  decidedAt    DateTime?
+  createdAt    DateTime      @default(now())
 
   @@index([userId, date])
+  @@index([status])
 }
 
 /// 操作ログ(監査用)

@@ -19,11 +19,11 @@ export default async function BenefitsPage() {
   });
   const mealInfo = await mealAllowanceForMonth(user.id, year, month);
 
-  // 管理者: 全メンバーの食事補助申請履歴(直近200件)
+  // 管理者: 全メンバーの食事補助申請履歴(直近50件)
   const allMeals = isAdmin
     ? await prisma.mealRecord.findMany({
         orderBy: [{ date: "desc" }, { createdAt: "desc" }],
-        take: 200,
+        take: 50,
         include: { user: { select: { name: true } } },
       })
     : [];
@@ -69,6 +69,7 @@ export default async function BenefitsPage() {
         date: m.date.toISOString(),
         amount: m.amount,
         hasReceipt: !!m.receiptImage,
+        status: m.status,
       }))}
       mealInfo={mealInfo}
       allMeals={allMeals.map((m) => ({
@@ -78,6 +79,7 @@ export default async function BenefitsPage() {
         amount: m.amount,
         hasReceipt: !!m.receiptImage,
         createdAt: m.createdAt.toISOString(),
+        status: m.status,
       }))}
     />
   );

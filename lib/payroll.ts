@@ -39,7 +39,7 @@ export async function mealAllowanceForMonth(
   const limit = MEAL_LIMIT[rank.key];
   const [start, end] = monthRange(year, month);
   const records = await prisma.mealRecord.findMany({
-    where: { userId, date: { gte: start, lt: end } },
+    where: { userId, date: { gte: start, lt: end }, status: "APPROVED" },
     select: { date: true, amount: true },
   });
   const dayset = new Set(records.map((r) => toJstDateInput(r.date)));

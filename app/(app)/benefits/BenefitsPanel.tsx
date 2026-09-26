@@ -17,6 +17,8 @@ import {
   deleteExpense,
   submitMeal,
   deleteMeal,
+  approveMeal,
+  rejectMeal,
   getMealReceipt,
   type EventFormState,
   type ExpenseFormState,
@@ -32,6 +34,7 @@ type MealDTO = {
   date: string;
   amount: number;
   hasReceipt: boolean;
+  status: ExpenseStatus;
 };
 
 type AllMealDTO = {
@@ -41,6 +44,7 @@ type AllMealDTO = {
   amount: number;
   hasReceipt: boolean;
   createdAt: string;
+  status: ExpenseStatus;
 };
 
 type EventDTO = {
@@ -65,7 +69,7 @@ type ExpenseDTO = {
   createdAt: string;
 };
 
-const EXPENSE_STATUS: Record<
+const REQUEST_STATUS: Record<
   ExpenseStatus,
   { label: string; cls: string }
 > = {
@@ -207,6 +211,7 @@ export function BenefitsPanel({
           <MealForm year={year} month={month} />
           <div className="lg:col-span-2">
             <MealList
+              isAdmin={isAdmin}
               meals={meals}
               onDelete={(id) => {
                 if (confirm("この食事記録を削除しますか?"))
@@ -215,7 +220,13 @@ export function BenefitsPanel({
             />
           </div>
         </div>
-        {isAdmin && <AdminMealHistory meals={allMeals} />}
+        {isAdmin && (
+          <AdminMealHistory
+            meals={allMeals}
+            onApprove={(id) => startTransition(() => approveMeal(id))}
+            onReject={(id) => startTransition(() => rejectMeal(id))}
+          />
+        )}
       </section>
 
       {showEvent && isAdmin && (
@@ -261,7 +272,7 @@ function MealSummary({
         </div>
       </div>
       <p className="text-xs text-gray-400 mt-3">
-        月10日以上、日付・金額と領収書の写真を申請すると、ランクの限度額内で申請額が報酬に加算されます({year}年{month}月)。
+        管理者が承認した申請が月10日以上になると、ランクの限度額内で承認済み申請の合計額が報酬に加算されます({year}年{month}月)。
       </p>
     </div>
   );
@@ -433,7 +444,7 @@ function MealForm({ year, month }: { year: number; month: number }) {
         )}
         {state.ok && (
           <p className="text-sm text-green-700 bg-green-50 rounded-md px-3 py-2">
-            申請しました。
+            申請しました。管理者の承認をお待ちください。
           </p>
         )}
         <button
@@ -521,9 +532,11 @@ function ReceiptButton({ id, hasReceipt }: { id: string; hasReceipt: boolean }) 
 }
 
 function MealList({
+  isAdmin,
   meals,
   onDelete,
 }: {
+  isAdmin: boolean;
   meals: MealDTO[];
   onDelete: (id: string) => void;
 }) {
@@ -538,41 +551,59 @@ function MealList({
         </p>
       ) : (
         <ul className="divide-y divide-gray-100">
-          {meals.map((m) => (
-            <li
-              key={m.id}
-              className="px-4 py-2.5 flex items-center justify-between gap-3"
-            >
-              <div className="min-w-0">
-                <p className="font-medium truncate">
-                  {formatDate(m.date)}
-                  <span className="ml-2 font-semibold text-brand">
-                    {yen(m.amount)}
-                  </span>
-                </p>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <ReceiptButton id={m.id} hasReceipt={m.hasReceipt} />
-                <button
-                  onClick={() => onDelete(m.id)}
-                  className="text-red-500 text-xs hover:underline"
-                >
-                  削除
-                </button>
-              </div>
-            </li>
-          ))}
+          {meals.map((m) => {
+            const s = REQUEST_STATUS[m.status];
+            return (
+              <li
+                key={m.id}
+                className="px-4 py-2.5 flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate flex items-center gap-2">
+                    {formatDate(m.date)}
+                    <span className="font-semibold text-brand">
+                      {yen(m.amount)}
+                    </span>
+                    <span
+                      className={`text-[11px] px-2 py-0.5 rounded-full ${s.cls}`}
+                    >
+                      {s.label}
+                    </span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <ReceiptButton id={m.id} hasReceipt={m.hasReceipt} />
+                  {(isAdmin || m.status === "PENDING") && (
+                    <button
+                      onClick={() => onDelete(m.id)}
+                      className="text-red-500 text-xs hover:underline"
+                    >
+                      {isAdmin ? "削除" : "取消"}
+                    </button>
+                  )}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
   );
 }
 
-function AdminMealHistory({ meals }: { meals: AllMealDTO[] }) {
+function AdminMealHistory({
+  meals,
+  onApprove,
+  onReject,
+}: {
+  meals: AllMealDTO[];
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+}) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100">
-        <h3 className="font-semibold">食事補助 申請履歴(全メンバー・最新200件)</h3>
+        <h3 className="font-semibold">食事補助 申請履歴(全メンバー・最新50件)</h3>
       </div>
       {meals.length === 0 ? (
         <p className="px-4 py-8 text-center text-sm text-gray-400">
@@ -580,25 +611,51 @@ function AdminMealHistory({ meals }: { meals: AllMealDTO[] }) {
         </p>
       ) : (
         <ul className="divide-y divide-gray-100">
-          {meals.map((m) => (
-            <li
-              key={m.id}
-              className="px-4 py-2.5 flex items-center justify-between gap-3"
-            >
-              <div className="min-w-0">
-                <p className="font-medium truncate">
-                  {m.userName}
-                  <span className="ml-2 font-semibold text-brand">
-                    {yen(m.amount)}
-                  </span>
-                </p>
-                <p className="text-xs text-gray-400">
-                  {formatDate(m.date)} ・ 申請: {formatDate(m.createdAt)}
-                </p>
-              </div>
-              <ReceiptButton id={m.id} hasReceipt={m.hasReceipt} />
-            </li>
-          ))}
+          {meals.map((m) => {
+            const s = REQUEST_STATUS[m.status];
+            return (
+              <li
+                key={m.id}
+                className="px-4 py-2.5 flex items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium truncate flex items-center gap-2">
+                    {m.userName}
+                    <span className="font-semibold text-brand">
+                      {yen(m.amount)}
+                    </span>
+                    <span
+                      className={`text-[11px] px-2 py-0.5 rounded-full ${s.cls}`}
+                    >
+                      {s.label}
+                    </span>
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {formatDate(m.date)} ・ 申請: {formatDate(m.createdAt)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <ReceiptButton id={m.id} hasReceipt={m.hasReceipt} />
+                  {m.status === "PENDING" && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => onApprove(m.id)}
+                        className="rounded-md bg-green-600 text-white px-3 py-1 text-xs hover:bg-green-700"
+                      >
+                        承認
+                      </button>
+                      <button
+                        onClick={() => onReject(m.id)}
+                        className="rounded-md border border-gray-300 bg-white px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                      >
+                        却下
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -790,7 +847,7 @@ function ExpenseList({
       ) : (
         <ul className="divide-y divide-gray-100">
           {expenses.map((x) => {
-            const s = EXPENSE_STATUS[x.status];
+            const s = REQUEST_STATUS[x.status];
             return (
               <li key={x.id} className="px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
