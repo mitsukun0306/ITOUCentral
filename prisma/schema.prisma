@@ -176,6 +176,7 @@ model MealRecord {
 
   @@index([userId, date])
   @@index([status])
+  @@index([status, decidedAt])
 }
 
 /// 操作ログ(監査用)

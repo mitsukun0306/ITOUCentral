@@ -3,10 +3,14 @@ import { prisma } from "@/lib/db";
 import { mealAllowanceForMonth, monthRange } from "@/lib/payroll";
 import { jstDayStart, jstYearMonth } from "@/lib/format";
 import { BenefitsPanel } from "./BenefitsPanel";
+import { purgeOldMealReceipts } from "./actions";
 
 export default async function BenefitsPage() {
   const user = await requireUser();
   const isAdmin = user.role === "ADMIN";
+
+  // 承認/却下から1週間経過した領収書画像を機会的に削除(容量対策)
+  await purgeOldMealReceipts();
 
   const todayStart = jstDayStart();
   const { year, month } = jstYearMonth();

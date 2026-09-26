@@ -276,6 +276,33 @@ export async function rejectMeal(id: string) {
   await decideMeal(id, "REJECTED");
 }
 
+const MEAL_RECEIPT_RETENTION_DAYS = 7;
+
+/**
+ * 承認/却下から1週間以上経過した食事補助の領収書画像を削除する(DB容量対策)。
+ * 専用のジョブ実行環境が無いため、/benefits ページの表示のたびに機会的に実行する。
+ */
+export async function purgeOldMealReceipts(): Promise<void> {
+  const cutoff = new Date(
+    Date.now() - MEAL_RECEIPT_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+  );
+  const { count } = await prisma.mealRecord.updateMany({
+    where: {
+      status: { in: ["APPROVED", "REJECTED"] },
+      decidedAt: { lt: cutoff },
+      receiptImage: { not: null },
+    },
+    data: { receiptImage: null, receiptMime: null },
+  });
+  if (count > 0) {
+    await logAudit(
+      { id: "system", name: "システム(自動)" },
+      "食事補助の領収書を自動削除",
+      `${count}件(承認/却下から${MEAL_RECEIPT_RETENTION_DAYS}日経過)`,
+    );
+  }
+}
+
 /** 食事記録に添付された領収書画像を取得(本人 or 管理者のみ)。一覧を軽くするため必要時に個別取得する。 */
 export async function getMealReceipt(
   id: string,
