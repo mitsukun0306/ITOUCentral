@@ -3,7 +3,7 @@
 いとう開発部 社内専用ポータル。**タスク管理・勤怠・給与(成果報酬)管理**を1つのアプリで行います。
 
 - 対象: 社内関係者専用(業務委託の成果報酬運用が前提)
-- 技術: Next.js 16 (App Router) / React 19 / TypeScript / Tailwind CSS / Prisma / SQLite(将来 PostgreSQL へ移行可能)
+- 技術: Next.js 16 (App Router) / React 19 / TypeScript / Tailwind CSS / Prisma / PostgreSQL
 
 ---
 
@@ -15,6 +15,9 @@
 | タスク管理 | 作成・編集・削除・担当割当・報酬設定 | 自分のタスクのステータス変更 |
 | 勤怠 | 全メンバーの記録閲覧・編集 | 出勤/退勤の打刻・自分の記録編集 |
 | 給与 | 月次計算・手入力・確定 | 自分の月次報酬の確認 |
+| 福利厚生 | リトリート登録・経費/食事補助の承認 | 経費申請・食事補助(領収書写真)の申請 |
+| 通知 | 完了申請・勤怠変更・経費申請の承認待ち | 期限超過・期限接近・未着手のタスク |
+| 監査ログ | 操作履歴の閲覧 | ― |
 | メンバー管理 | 追加・権限変更・有効/無効・PW再設定 | ― |
 | 設定 | 組織名・既定の給与計算方式 | ― |
 
@@ -111,21 +114,22 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 ---
 
-## GitHub へのプッシュ
+## 開発フロー
 
-まだリポジトリが無い場合:
+| コマンド | 内容 |
+| --- | --- |
+| `npm run typecheck` | TypeScript 型チェック |
+| `npm run lint` | ESLint |
+| `npm test` | ユニットテスト(Vitest、`lib/**/*.test.ts`)。`npm run test:watch` で監視実行 |
+| `npm run check` | 上の3つをまとめて実行 |
+| `npm run build` | 本番ビルド |
+| `npm run db:reset` | ローカルDBを作り直して seed まで実行 |
 
-```bash
-git init
-git add -A
-git commit -m "Initial commit: ITOUCentral"
-git branch -M main
-# GitHub で空のリポジトリを作成し、その URL を設定
-git remote add origin https://github.com/<ユーザー名>/<リポジトリ名>.git
-git push -u origin main
-```
+- PR と `main` への push で GitHub Actions(`.github/workflows/ci.yml`)が型チェック・lint・テスト・マイグレーション適用・ビルドを実行します。
+- マイグレーションはフォルダ名の辞書順に適用されます。新規作成時の命名ルールは [`AGENTS.md`](AGENTS.md) の「マイグレーションの注意」を参照してください。
+- Claude などのエージェントで作業するときの規約は [`AGENTS.md`](AGENTS.md)(`CLAUDE.md` から読み込み)にまとめています。
 
-> `.env`(秘密情報)や `dev.db`、生成物は `.gitignore` 済みでコミットされません。
+> `.env`(秘密情報)や生成物(`lib/generated`)は `.gitignore` 済みでコミットされません。
 
 ---
 
@@ -143,8 +147,10 @@ git push -u origin main
 app/
   login/            ログイン
   (app)/            認証必須エリア(共通レイアウト+サイドバー)
-    dashboard/  tasks/  attendance/  payroll/  members/  settings/
-lib/                db, auth, payroll, format
-components/         共通UI(StatusBadge, MonthNav)
+    dashboard/  tasks/  attendance/  payroll/  benefits/
+    notifications/  audit/  members/  settings/
+lib/                db, auth, payroll, attendance, rank, format, notifications, audit(+ *.test.ts)
+components/         共通UI(StatusBadge, MonthNav, Countdown, RankBadge)
 prisma/             schema, migrations, seed
+.github/workflows/  CI
 ```

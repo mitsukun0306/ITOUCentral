@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: itoucentral
+          POSTGRES_PASSWORD: itoucentral
+          POSTGRES_DB: itoucentral
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U itoucentral"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://itoucentral:itoucentral@localhost:5432/itoucentral?schema=public
+      AUTH_SECRET: ci-only-dummy-secret-not-used-in-production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # postinstall で prisma generate も実行される
+      - run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      # TODO: lint エラー(lib/generated の除外漏れ・react-hooks の指摘)を修正したら
+      # continue-on-error を外して必須チェックにする
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Unit tests
+        run: npm test
+
+      # 空のDBにマイグレーションを全件適用できること・schema.prisma と食い違いがないことを確認
+      - name: Migrations apply cleanly
+        run: |
+          npx prisma migrate deploy
+          npx prisma migrate diff --from-url "$DATABASE_URL" --to-schema-datamodel prisma/schema.prisma --exit-code
+
+      - name: Seed
+        run: npx prisma db seed
+
+      - name: Build
+        run: npm run build
