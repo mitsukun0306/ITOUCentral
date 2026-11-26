@@ -4,6 +4,8 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "ITOUCentral",
   description: "いとう開発部 社内ポータル(タスク・勤怠・給与管理)",
+  applicationName: "ITOUCentral",
+  appleWebApp: { capable: true, title: "ITOUCentral", statusBarStyle: "default" },
 };
 
 export default function RootLayout({
