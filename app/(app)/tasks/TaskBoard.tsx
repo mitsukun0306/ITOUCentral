@@ -10,7 +10,13 @@ import {
 import { StatusBadge } from "@/components/StatusBadge";
 import { Countdown } from "@/components/Countdown";
 import { yen, formatDate, toJstDateInput } from "@/lib/format";
-import type { TaskStatus } from "@/lib/generated/prisma";
+import {
+  TASK_REWARD_LABEL,
+  QUANTITY_SLIDER_MAX,
+  taskAmount,
+  taskAmountDetail,
+} from "@/lib/reward";
+import type { TaskRewardType, TaskStatus } from "@/lib/generated/prisma";
 
 type TaskDTO = {
   id: string;
@@ -19,7 +25,9 @@ type TaskDTO = {
   status: TaskStatus;
   assigneeId: string | null;
   assigneeName: string | null;
+  rewardType: TaskRewardType;
   fixedReward: number;
+  deposit: number;
   unitPrice: number;
   quantity: number;
   payoutYear: number | null;
@@ -235,13 +243,12 @@ export function TaskBoard({
                     )}
                     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-400 mt-1.5">
                       <span>担当: {t.assigneeName ?? "未割当"}</span>
-                      {t.fixedReward > 0 && (
-                        <span>固定報酬: {yen(t.fixedReward)}</span>
-                      )}
-                      {t.unitPrice > 0 && (
+                      {taskAmount(t) > 0 && (
                         <span>
-                          単価 {yen(t.unitPrice)} × {t.quantity} ={" "}
-                          {yen(t.unitPrice * t.quantity)}
+                          報酬:{" "}
+                          {t.rewardType === "FIXED"
+                            ? `${yen(t.fixedReward)}(固定)`
+                            : `${taskAmountDetail(t)} = ${yen(taskAmount(t))}`}
                         </span>
                       )}
                       {t.dueDate && (
@@ -434,6 +441,22 @@ function TaskFormModal({
 }) {
   const [state, formAction, pending] = useActionState(upsertTask, initialState);
 
+  const [rewardType, setRewardType] = useState<TaskRewardType>(
+    task?.rewardType ?? "FIXED",
+  );
+  const [fixedReward, setFixedReward] = useState(String(task?.fixedReward ?? 0));
+  const [deposit, setDeposit] = useState(String(task?.deposit ?? 0));
+  const [unitPrice, setUnitPrice] = useState(String(task?.unitPrice ?? 0));
+  const [quantity, setQuantity] = useState(String(task?.quantity ?? 0));
+  const num = (v: string) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const previewAmount = taskAmount({
+    rewardType,
+    fixedReward: num(fixedReward),
+    deposit: num(deposit),
+    unitPrice: num(unitPrice),
+    quantity: num(quantity),
+  });
+
   const [due, setDue] = useState(
     task?.dueDate ? toJstDateInput(task.dueDate) : "",
   );
@@ -521,38 +544,121 @@ function TaskFormModal({
           </div>
 
           <div className="rounded-lg bg-gray-50 border border-gray-100 p-3 space-y-3">
-            <p className="text-xs text-gray-500">
-              報酬の入力(給与計算方式に応じて使われます)
-            </p>
-            <Field label="固定報酬(円)">
-              <input
-                name="fixedReward"
-                type="number"
-                min={0}
-                defaultValue={task?.fixedReward ?? 0}
-                className={inputCls}
-              />
-            </Field>
-            <div className="grid grid-cols-2 gap-4">
-              <Field label="単価(円)">
+            <div>
+              <span className="block text-sm font-medium mb-1">報酬方式</span>
+              <div className="grid grid-cols-2 gap-2">
+                {(["FIXED", "DEPOSIT_UNIT"] as const).map((rt) => (
+                  <label
+                    key={rt}
+                    className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer ${
+                      rewardType === rt
+                        ? "border-brand bg-brand/10 text-brand font-medium"
+                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="rewardType"
+                      value={rt}
+                      checked={rewardType === rt}
+                      onChange={() => setRewardType(rt)}
+                      className="sr-only"
+                    />
+                    {TASK_REWARD_LABEL[rt]}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* 選択していない方式の値も保持するため、非表示でも送信する */}
+            <div className={rewardType === "FIXED" ? "" : "hidden"}>
+              <Field label="固定報酬(円)">
                 <input
-                  name="unitPrice"
+                  name="fixedReward"
                   type="number"
                   min={0}
-                  defaultValue={task?.unitPrice ?? 0}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label="成果量">
-                <input
-                  name="quantity"
-                  type="number"
-                  min={0}
-                  defaultValue={task?.quantity ?? 0}
+                  value={fixedReward}
+                  onChange={(e) => setFixedReward(e.target.value)}
                   className={inputCls}
                 />
               </Field>
             </div>
+
+            <div
+              className={`space-y-3 ${rewardType === "DEPOSIT_UNIT" ? "" : "hidden"}`}
+            >
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="手付金(円)">
+                  <input
+                    name="deposit"
+                    type="number"
+                    min={0}
+                    value={deposit}
+                    onChange={(e) => setDeposit(e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="単価(円)">
+                  <input
+                    name="unitPrice"
+                    type="number"
+                    min={0}
+                    value={unitPrice}
+                    onChange={(e) => setUnitPrice(e.target.value)}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+              <div>
+                <label
+                  htmlFor="task-quantity"
+                  className="block text-sm font-medium mb-1"
+                >
+                  成果量
+                </label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={0}
+                    max={QUANTITY_SLIDER_MAX}
+                    step={1}
+                    value={Math.min(num(quantity), QUANTITY_SLIDER_MAX)}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    aria-label="成果量(スライダー)"
+                    className="flex-1 accent-brand"
+                  />
+                  <input
+                    id="task-quantity"
+                    name="quantity"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    className={`${inputCls} !w-24 text-right`}
+                  />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  スライダーは{QUANTITY_SLIDER_MAX}まで。それ以上は数値を直接入力してください。
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-600">
+              このタスクの報酬:{" "}
+              <span className="font-semibold text-gray-900">
+                {yen(previewAmount)}
+              </span>
+              {rewardType === "DEPOSIT_UNIT" && (
+                <span className="text-xs text-gray-400 ml-2">
+                  = 手付金 {yen(num(deposit))} + {yen(num(unitPrice))} ×{" "}
+                  {num(quantity)}
+                </span>
+              )}
+            </p>
+            <p className="text-xs text-gray-400">
+              給与は完了タスクごとの報酬(遅延時は減額後)の合計です。
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

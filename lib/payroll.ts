@@ -1,5 +1,14 @@
 import { prisma } from "@/lib/db";
 import { toJstDateInput } from "@/lib/format";
+import { taskAmount, type RewardTask } from "@/lib/reward";
+
+export {
+  TASK_REWARD_LABEL,
+  QUANTITY_SLIDER_MAX,
+  taskAmount,
+  taskAmountDetail,
+  type RewardTask,
+} from "@/lib/reward";
 import { rankFor, MEAL_LIMIT, type RankKey } from "@/lib/rank";
 import type { BenefitToggles } from "@/lib/benefits";
 import type {
@@ -61,22 +70,13 @@ export async function mealAllowanceForMonth(
 }
 
 export const PAYROLL_METHOD_LABEL: Record<PayrollMethod, string> = {
-  TASK_FIXED: "タスク固定報酬の合算",
-  UNIT_QUANTITY: "単価 × 成果量 の合算",
+  TASK_FIXED: "タスク別方式の合算",
+  UNIT_QUANTITY: "タスク別方式の合算", // 旧「単価 × 成果量」(過去レコード互換)
   MONTHLY_MANUAL: "月次手入力",
 };
 
-/** 1タスクの報酬額(減額前の基準額)を、給与計算方式に応じて算出 */
-export function taskAmount(task: Task, method: PayrollMethod): number {
-  switch (method) {
-    case "TASK_FIXED":
-      return task.fixedReward;
-    case "UNIT_QUANTITY":
-      return task.unitPrice * task.quantity;
-    case "MONTHLY_MANUAL":
-      return 0; // 手入力のため自動計算しない
-  }
-}
+/** 選択肢として出す給与計算方式(UNIT_QUANTITY は旧方式のため出さない) */
+export const PAYROLL_METHODS: PayrollMethod[] = ["TASK_FIXED", "MONTHLY_MANUAL"];
 
 export type PenaltyTask = {
   dueDate: Date | null;
@@ -125,8 +125,8 @@ export function lateInfo(task: PenaltyTask): {
 }
 
 /** 遅延減額を反映した実支給の報酬額(整数円・切り捨て) */
-export function taskPayable(task: Task, method: PayrollMethod): number {
-  return Math.floor(taskAmount(task, method) * lateInfo(task).mult);
+export function taskPayable(task: RewardTask & PenaltyTask): number {
+  return Math.floor(taskAmount(task) * lateInfo(task).mult);
 }
 
 /** 指定年月(JST)の [開始, 翌月開始) を JST 基準で返す */
@@ -140,7 +140,8 @@ export function monthRange(year: number, month: number): [Date, Date] {
 }
 
 /**
- * 指定ユーザー・年月・方式での成果報酬を、完了タスクから自動集計。
+ * 指定ユーザー・年月の成果報酬を、完了タスクから自動集計。
+ * 各タスクはそれぞれの報酬方式(固定報酬 / 手付金 + 単価 × 成果量)で計算し合算する。
  * MONTHLY_MANUAL の場合は 0(手入力運用)。
  */
 export async function computePayroll(
@@ -168,7 +169,7 @@ export async function computePayroll(
     orderBy: { completedAt: "asc" },
   });
 
-  const amount = tasks.reduce((sum, t) => sum + taskPayable(t, method), 0);
+  const amount = tasks.reduce((sum, t) => sum + taskPayable(t), 0);
   return { amount, tasks };
 }
 

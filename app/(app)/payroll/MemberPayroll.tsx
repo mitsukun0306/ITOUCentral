@@ -6,8 +6,8 @@ import type { PayrollMethod } from "@/lib/generated/prisma";
 type TaskRow = {
   id: string;
   title: string;
-  unitPrice: number;
-  quantity: number;
+  rewardLabel: string; // 報酬方式
+  detail: string; // 内訳(例: 手付金 ¥10,000 + ¥3,000 × 5)
   base: number; // 減額前
   payable: number; // 減額後(実支給)
   penaltyLabel: string | null;
@@ -139,11 +139,9 @@ export function MemberPayroll({
                   <tr key={t.id} className="border-b border-gray-50">
                     <td className="px-4 py-2">
                       {t.title}
-                      {method === "UNIT_QUANTITY" && (
-                        <span className="text-xs text-gray-400 ml-2">
-                          {yen(t.unitPrice)} × {t.quantity}
-                        </span>
-                      )}
+                      <span className="block text-[11px] text-gray-400 mt-0.5">
+                        {t.rewardLabel}: {t.detail}
+                      </span>
                       {t.penaltyLabel && (
                         <span className="block text-[11px] text-red-600 mt-0.5">
                           遅延減額: {t.penaltyLabel}

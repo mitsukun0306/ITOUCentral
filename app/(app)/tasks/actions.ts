@@ -26,9 +26,15 @@ const upsertSchema = z.object({
   description: z.string().optional(),
   assigneeId: z.string().optional(),
   status: z.enum(["TODO", "IN_PROGRESS", "REVIEW", "DONE"]),
+  rewardType: z.enum(["FIXED", "DEPOSIT_UNIT"]).default("FIXED"),
   fixedReward: z.coerce.number().int().min(0).default(0),
+  deposit: z.coerce.number().int().min(0).default(0),
   unitPrice: z.coerce.number().int().min(0).default(0),
-  quantity: z.coerce.number().int().min(0).default(0),
+  quantity: z.coerce
+    .number()
+    .int("成果量は整数で入力してください")
+    .min(0)
+    .default(0),
   dueDate: z.string().optional(),
   // 支給月 "YYYY-MM"。空なら完了月に計上。
   payoutMonth: z
@@ -61,7 +67,9 @@ export async function upsertTask(
     description: formData.get("description") || undefined,
     assigneeId: formData.get("assigneeId") || undefined,
     status: formData.get("status"),
+    rewardType: formData.get("rewardType") || undefined,
     fixedReward: formData.get("fixedReward") || 0,
+    deposit: formData.get("deposit") || 0,
     unitPrice: formData.get("unitPrice") || 0,
     quantity: formData.get("quantity") || 0,
     dueDate: formData.get("dueDate") || undefined,
@@ -107,7 +115,9 @@ export async function upsertTask(
     description: d.description ?? null,
     assigneeId,
     status: d.status as TaskStatus,
+    rewardType: d.rewardType,
     fixedReward: d.fixedReward,
+    deposit: d.deposit,
     unitPrice: d.unitPrice,
     quantity: d.quantity,
     payoutYear,
