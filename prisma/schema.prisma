@@ -142,6 +142,10 @@ model Setting {
   id                   Int           @id @default(1)
   companyName          String        @default("いとう開発部")
   defaultPayrollMethod PayrollMethod @default(TASK_FIXED)
+  /// 福利厚生の各項目を提供中か(false のときはメンバーに「ごめんなさい」表示)
+  benefitRetreatEnabled Boolean      @default(true)
+  benefitExpenseEnabled Boolean      @default(true)
+  benefitMealEnabled    Boolean      @default(true)
   updatedAt            DateTime      @updatedAt
 }
 

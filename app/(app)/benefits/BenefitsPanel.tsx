@@ -8,6 +8,7 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from "react";
+import Link from "next/link";
 import {
   createRetreatEvent,
   deleteRetreatEvent,
@@ -28,6 +29,12 @@ import { yen, formatDate } from "@/lib/format";
 import { RankBadge } from "@/components/RankBadge";
 import type { MealAllowance } from "@/lib/payroll";
 import type { ExpenseStatus } from "@/lib/generated/prisma";
+import {
+  BENEFIT_ITEMS,
+  benefitUnavailableMessage,
+  type BenefitKey,
+  type BenefitToggles,
+} from "@/lib/benefits";
 
 type MealDTO = {
   id: string;
@@ -80,6 +87,7 @@ const REQUEST_STATUS: Record<
 
 export function BenefitsPanel({
   isAdmin,
+  toggles,
   events,
   expenses,
   year,
@@ -89,6 +97,7 @@ export function BenefitsPanel({
   allMeals,
 }: {
   isAdmin: boolean;
+  toggles: BenefitToggles;
   events: EventDTO[];
   expenses: ExpenseDTO[];
   year: number;
@@ -99,6 +108,8 @@ export function BenefitsPanel({
 }) {
   const [showEvent, setShowEvent] = useState(false);
   const [, startTransition] = useTransition();
+  // オフの項目: メンバーには「ごめんなさい」のみ、管理者には案内バナー付きで通常表示
+  const hidden = (key: BenefitKey) => !toggles[key] && !isAdmin;
 
   return (
     <div className="space-y-8">
@@ -123,7 +134,10 @@ export function BenefitsPanel({
           )}
         </div>
 
-        {events.length === 0 ? (
+        {!toggles.retreat && isAdmin && <AdminOffNotice benefitKey="retreat" />}
+        {hidden("retreat") ? (
+          <UnavailableNotice benefitKey="retreat" />
+        ) : events.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-sm text-gray-400">
             予定されているイベントはありません
           </div>
@@ -184,6 +198,10 @@ export function BenefitsPanel({
       {/* 経費申請 */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">💳 経費申請</h2>
+        {!toggles.expense && isAdmin && <AdminOffNotice benefitKey="expense" />}
+        {hidden("expense") ? (
+          <UnavailableNotice benefitKey="expense" />
+        ) : (
         <div className="grid gap-4 lg:grid-cols-3">
           <ExpenseForm />
           <div className="lg:col-span-2">
@@ -201,11 +219,17 @@ export function BenefitsPanel({
             />
           </div>
         </div>
+        )}
       </section>
 
       {/* 食事補助 */}
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">🍱 食事補助</h2>
+        {!toggles.meal && isAdmin && <AdminOffNotice benefitKey="meal" />}
+        {hidden("meal") ? (
+          <UnavailableNotice benefitKey="meal" />
+        ) : (
+        <>
         <MealSummary year={year} month={month} info={mealInfo} />
         <div className="grid gap-4 lg:grid-cols-3">
           <MealForm year={year} month={month} />
@@ -227,12 +251,44 @@ export function BenefitsPanel({
             onReject={(id) => startTransition(() => rejectMeal(id))}
           />
         )}
+        </>
+        )}
       </section>
 
       {showEvent && isAdmin && (
         <EventModal onClose={() => setShowEvent(false)} />
       )}
     </div>
+  );
+}
+
+function benefitLabel(key: BenefitKey): string {
+  return BENEFIT_ITEMS.find((b) => b.key === key)?.label ?? "";
+}
+
+/** メンバー向け: オフの項目の代わりに表示する「ごめんなさい」メッセージ */
+function UnavailableNotice({ benefitKey }: { benefitKey: BenefitKey }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+      <p className="text-3xl" aria-hidden>
+        🙇
+      </p>
+      <p className="mt-2 text-sm font-medium text-gray-700">
+        {benefitUnavailableMessage(benefitLabel(benefitKey))}
+      </p>
+    </div>
+  );
+}
+
+/** 管理者向け: この項目がオフであることの案内 */
+function AdminOffNotice({ benefitKey }: { benefitKey: BenefitKey }) {
+  return (
+    <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+      {benefitLabel(benefitKey)}は現在オフです。メンバーには「ごめんなさい」メッセージが表示され、新規申請はできません。
+      <Link href="/settings" className="ml-1 underline font-medium">
+        設定で切り替える
+      </Link>
+    </p>
   );
 }
 

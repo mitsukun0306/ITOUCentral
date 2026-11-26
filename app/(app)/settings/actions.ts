@@ -13,6 +13,9 @@ const schema = z.object({
     "UNIT_QUANTITY",
     "MONTHLY_MANUAL",
   ]),
+  benefitRetreatEnabled: z.boolean(),
+  benefitExpenseEnabled: z.boolean(),
+  benefitMealEnabled: z.boolean(),
 });
 
 export type SettingState = { error?: string; ok?: boolean };
@@ -27,6 +30,10 @@ export async function updateSetting(
   const parsed = schema.safeParse({
     companyName: formData.get("companyName"),
     defaultPayrollMethod: formData.get("defaultPayrollMethod"),
+    // チェックボックスは未チェック時に値が送られないため、"on" の有無で判定
+    benefitRetreatEnabled: formData.get("benefitRetreatEnabled") === "on",
+    benefitExpenseEnabled: formData.get("benefitExpenseEnabled") === "on",
+    benefitMealEnabled: formData.get("benefitMealEnabled") === "on",
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "入力エラー" };
@@ -37,8 +44,19 @@ export async function updateSetting(
     update: parsed.data,
     create: { id: 1, ...parsed.data },
   });
-  await logAudit(user, "設定を変更", parsed.data.companyName);
+  const d = parsed.data;
+  const off = [
+    !d.benefitRetreatEnabled && "リトリートイベント",
+    !d.benefitExpenseEnabled && "経費申請",
+    !d.benefitMealEnabled && "食事補助",
+  ].filter(Boolean);
+  await logAudit(
+    user,
+    "設定を変更",
+    `${d.companyName} / 福利厚生オフ: ${off.length ? off.join("・") : "なし"}`,
+  );
   revalidatePath("/settings");
+  revalidatePath("/benefits");
   revalidatePath("/dashboard");
   revalidatePath("/payroll");
   return { ok: true };

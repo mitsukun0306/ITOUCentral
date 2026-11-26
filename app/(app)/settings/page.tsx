@@ -15,6 +15,11 @@ export default async function SettingsPage() {
       <SettingsForm
         companyName={setting.companyName}
         defaultPayrollMethod={setting.defaultPayrollMethod}
+        benefits={{
+          retreat: setting.benefitRetreatEnabled,
+          expense: setting.benefitExpenseEnabled,
+          meal: setting.benefitMealEnabled,
+        }}
       />
     </div>
   );
