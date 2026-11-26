@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useActionState, useEffect } from "react";
 import { MonthNav } from "@/components/MonthNav";
-import { PAYROLL_METHOD_LABEL } from "@/lib/payroll";
+import { PAYROLL_METHOD_LABEL, PAYROLL_METHODS } from "@/lib/payroll";
 import { yen } from "@/lib/format";
 import type { PayrollMethod } from "@/lib/generated/prisma";
 import {
@@ -49,11 +49,6 @@ const DEDUCTION_LABELS = [
   "その他",
 ];
 
-const METHODS: PayrollMethod[] = [
-  "TASK_FIXED",
-  "UNIT_QUANTITY",
-  "MONTHLY_MANUAL",
-];
 
 export function AdminPayroll({
   year,
@@ -70,7 +65,9 @@ export function AdminPayroll({
   members: { id: string; name: string }[];
   deductions: Deduction[];
 }) {
-  const [method, setMethod] = useState<PayrollMethod>(defaultMethod);
+  const [method, setMethod] = useState<PayrollMethod>(
+    defaultMethod === "UNIT_QUANTITY" ? "TASK_FIXED" : defaultMethod,
+  );
   const [editing, setEditing] = useState<Row | null>(null);
   // null: 閉じる / "new": 新規 / Deduction: 編集
   const [dedEditing, setDedEditing] = useState<Deduction | "new" | null>(null);
@@ -102,7 +99,7 @@ export function AdminPayroll({
             onChange={(e) => setMethod(e.target.value as PayrollMethod)}
             className="text-sm border border-gray-300 rounded-lg px-3 py-2"
           >
-            {METHODS.map((m) => (
+            {PAYROLL_METHODS.map((m) => (
               <option key={m} value={m}>
                 {PAYROLL_METHOD_LABEL[m]}
               </option>

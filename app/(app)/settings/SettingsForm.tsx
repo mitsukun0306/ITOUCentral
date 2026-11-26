@@ -2,19 +2,16 @@
 
 import { useActionState } from "react";
 import { updateSetting, type SettingState } from "./actions";
-import { PAYROLL_METHOD_LABEL } from "@/lib/payroll";
+import { PAYROLL_METHOD_LABEL, PAYROLL_METHODS } from "@/lib/payroll";
 import type { PayrollMethod } from "@/lib/generated/prisma";
 import { BENEFIT_ITEMS, type BenefitToggles } from "@/lib/benefits";
 
-const METHODS: PayrollMethod[] = [
-  "TASK_FIXED",
-  "UNIT_QUANTITY",
-  "MONTHLY_MANUAL",
-];
 
 const METHOD_DESC: Record<PayrollMethod, string> = {
-  TASK_FIXED: "完了タスクに設定した固定報酬を合算して給与を算出します。",
-  UNIT_QUANTITY: "完了タスクの「単価 × 成果量」を合算して給与を算出します。",
+  TASK_FIXED:
+    "完了タスクごとに、タスクで選んだ報酬方式(固定報酬 / 手付金 + 単価 × 成果量)で計算し、その合計を給与にします。",
+  UNIT_QUANTITY:
+    "完了タスクごとに、タスクで選んだ報酬方式で計算し、その合計を給与にします。",
   MONTHLY_MANUAL: "自動計算せず、管理者が月ごとに金額を手入力して確定します。",
 };
 
@@ -50,7 +47,7 @@ export function SettingsForm({
           既定の給与計算方式
         </span>
         <div className="space-y-2">
-          {METHODS.map((m) => (
+          {PAYROLL_METHODS.map((m) => (
             <label
               key={m}
               className="flex items-start gap-3 rounded-lg border border-gray-200 p-3 cursor-pointer hover:bg-gray-50"
@@ -59,7 +56,12 @@ export function SettingsForm({
                 type="radio"
                 name="defaultPayrollMethod"
                 value={m}
-                defaultChecked={m === defaultPayrollMethod}
+                defaultChecked={
+                  m ===
+                  (defaultPayrollMethod === "UNIT_QUANTITY"
+                    ? "TASK_FIXED"
+                    : defaultPayrollMethod)
+                }
                 className="mt-1"
               />
               <span>

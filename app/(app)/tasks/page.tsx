@@ -34,7 +34,9 @@ export default async function TasksPage() {
         status: t.status,
         assigneeId: t.assigneeId,
         assigneeName: t.assignee?.name ?? null,
+        rewardType: t.rewardType,
         fixedReward: t.fixedReward,
+        deposit: t.deposit,
         unitPrice: t.unitPrice,
         quantity: t.quantity,
         payoutYear: t.payoutYear,
@@ -44,10 +46,10 @@ export default async function TasksPage() {
         penaltyOver: t.penaltyOver,
         dueDate: t.dueDate ? t.dueDate.toISOString() : null,
         submittedAt: t.submittedAt ? t.submittedAt.toISOString() : null,
-        // 完了申請中は報酬を仮確定して表示(タスクベース方式のみ)
+        // 完了申請中は報酬を仮確定して表示(手入力方式以外)
         provisionalReward:
           t.status === "REVIEW" && method !== "MONTHLY_MANUAL"
-            ? taskPayable(t, method)
+            ? taskPayable(t)
             : null,
         penaltyLabel: t.status === "REVIEW" ? lateInfo(t).label : null,
       }))}

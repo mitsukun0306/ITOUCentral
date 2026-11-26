@@ -70,6 +70,8 @@ async function main() {
           description: "技術ブログ記事",
           status: "DONE",
           assigneeId: member.id,
+          rewardType: "DEPOSIT_UNIT",
+          deposit: 5000,
           unitPrice: 3000,
           quantity: 10,
           completedAt: new Date(now.getFullYear(), now.getMonth(), 12),

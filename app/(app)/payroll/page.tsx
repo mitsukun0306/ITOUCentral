@@ -6,7 +6,9 @@ import {
   memberMonthlyPayout,
   mealAllowanceForMonth,
   taskAmount,
+  taskAmountDetail,
   lateInfo,
+  TASK_REWARD_LABEL,
   deductionsForMonth,
   sumDeductions,
 } from "@/lib/payroll";
@@ -123,12 +125,12 @@ export default async function PayrollPage({
       }))}
       tasks={tasks.map((t) => {
         const late = lateInfo(t);
-        const base = taskAmount(t, method);
+        const base = taskAmount(t);
         return {
           id: t.id,
           title: t.title,
-          unitPrice: t.unitPrice,
-          quantity: t.quantity,
+          rewardLabel: TASK_REWARD_LABEL[t.rewardType],
+          detail: taskAmountDetail(t),
           base,
           payable: Math.floor(base * late.mult),
           penaltyLabel: late.label,
