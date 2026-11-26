@@ -1,6 +1,10 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { mealAllowanceForMonth, monthRange } from "@/lib/payroll";
+import {
+  getBenefitToggles,
+  mealAllowanceForMonth,
+  monthRange,
+} from "@/lib/payroll";
 import { jstDayStart, jstYearMonth } from "@/lib/format";
 import { BenefitsPanel } from "./BenefitsPanel";
 import { purgeOldMealReceipts } from "./actions";
@@ -12,15 +16,25 @@ export default async function BenefitsPage() {
   // 承認/却下から1週間経過した領収書画像を機会的に削除(容量対策)
   await purgeOldMealReceipts();
 
+  // 管理者が設定でオフにした項目。メンバーには「ごめんなさい」表示のみでデータは取得しない
+  const toggles = await getBenefitToggles();
+  const show = {
+    retreat: isAdmin || toggles.retreat,
+    expense: isAdmin || toggles.expense,
+    meal: isAdmin || toggles.meal,
+  };
+
   const todayStart = jstDayStart();
   const { year, month } = jstYearMonth();
 
   // 食事補助: 当月の自分の記録と補助情報
   const [mealStart, mealEnd] = monthRange(year, month);
-  const meals = await prisma.mealRecord.findMany({
-    where: { userId: user.id, date: { gte: mealStart, lt: mealEnd } },
-    orderBy: { date: "desc" },
-  });
+  const meals = show.meal
+    ? await prisma.mealRecord.findMany({
+        where: { userId: user.id, date: { gte: mealStart, lt: mealEnd } },
+        orderBy: { date: "desc" },
+      })
+    : [];
   const mealInfo = await mealAllowanceForMonth(user.id, year, month);
 
   // 管理者: 全メンバーの食事補助申請履歴(直近50件)
@@ -33,19 +47,24 @@ export default async function BenefitsPage() {
     : [];
 
   // イベントは今日以降を優先しつつ全件(過去も見えるように昇順)
-  const events = await prisma.retreatEvent.findMany({
-    orderBy: { startDate: "asc" },
-  });
+  const events = show.retreat
+    ? await prisma.retreatEvent.findMany({
+        orderBy: { startDate: "asc" },
+      })
+    : [];
 
-  const expenses = await prisma.expenseRequest.findMany({
-    where: isAdmin ? {} : { userId: user.id },
-    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-    include: { user: { select: { name: true } } },
-  });
+  const expenses = show.expense
+    ? await prisma.expenseRequest.findMany({
+        where: isAdmin ? {} : { userId: user.id },
+        orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+        include: { user: { select: { name: true } } },
+      })
+    : [];
 
   return (
     <BenefitsPanel
       isAdmin={isAdmin}
+      toggles={toggles}
       events={events.map((e) => ({
         id: e.id,
         title: e.title,

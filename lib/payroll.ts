@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { toJstDateInput } from "@/lib/format";
 import { rankFor, MEAL_LIMIT, type RankKey } from "@/lib/rank";
+import type { BenefitToggles } from "@/lib/benefits";
 import type {
   PayrollMethod,
   PayrollStatus,
@@ -175,6 +176,16 @@ export async function getSetting() {
   const existing = await prisma.setting.findUnique({ where: { id: 1 } });
   if (existing) return existing;
   return prisma.setting.create({ data: { id: 1 } });
+}
+
+/** 福利厚生の各項目の提供状況(管理者が設定画面でオンオフ) */
+export async function getBenefitToggles(): Promise<BenefitToggles> {
+  const s = await getSetting();
+  return {
+    retreat: s.benefitRetreatEnabled,
+    expense: s.benefitExpenseEnabled,
+    meal: s.benefitMealEnabled,
+  };
 }
 
 /**

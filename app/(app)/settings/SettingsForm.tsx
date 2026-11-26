@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { updateSetting, type SettingState } from "./actions";
 import { PAYROLL_METHOD_LABEL } from "@/lib/payroll";
 import type { PayrollMethod } from "@/lib/generated/prisma";
+import { BENEFIT_ITEMS, type BenefitToggles } from "@/lib/benefits";
 
 const METHODS: PayrollMethod[] = [
   "TASK_FIXED",
@@ -22,9 +23,11 @@ const initial: SettingState = {};
 export function SettingsForm({
   companyName,
   defaultPayrollMethod,
+  benefits,
 }: {
   companyName: string;
   defaultPayrollMethod: PayrollMethod;
+  benefits: BenefitToggles;
 }) {
   const [state, action, pending] = useActionState(updateSetting, initial);
 
@@ -69,6 +72,41 @@ export function SettingsForm({
               </span>
             </label>
           ))}
+        </div>
+      </div>
+
+      <div>
+        <span className="block text-sm font-medium mb-1">福利厚生の提供</span>
+        <span className="block text-xs text-gray-500 mb-2">
+          オフにした項目は、福利厚生ページでメンバーに「ごめんなさい」メッセージが表示され、新規の申請ができなくなります。
+        </span>
+        <div className="space-y-2">
+          {BENEFIT_ITEMS.map((b) => {
+            const name = `benefit${b.key[0].toUpperCase()}${b.key.slice(1)}Enabled`;
+            return (
+              <label
+                key={b.key}
+                className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3 cursor-pointer hover:bg-gray-50"
+              >
+                <span>
+                  <span className="block text-sm font-medium">{b.label}</span>
+                  <span className="block text-xs text-gray-500 mt-0.5">
+                    {b.description}
+                  </span>
+                </span>
+                <span className="relative inline-flex shrink-0 items-center">
+                  <input
+                    type="checkbox"
+                    name={name}
+                    defaultChecked={benefits[b.key]}
+                    className="peer sr-only"
+                  />
+                  <span className="h-6 w-11 rounded-full bg-gray-300 transition-colors peer-checked:bg-brand peer-focus-visible:ring-2 peer-focus-visible:ring-brand/40" />
+                  <span className="absolute left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform peer-checked:translate-x-5" />
+                </span>
+              </label>
+            );
+          })}
         </div>
       </div>
 

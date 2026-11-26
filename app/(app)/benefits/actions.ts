@@ -6,11 +6,25 @@ import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { logAudit } from "@/lib/audit";
 import { yen, jstMidnight, formatDate } from "@/lib/format";
+import { getBenefitToggles } from "@/lib/payroll";
+import { BENEFIT_ITEMS, benefitUnavailableMessage, type BenefitKey } from "@/lib/benefits";
 
 async function requireAdmin() {
   const user = await requireUser();
   if (user.role !== "ADMIN") throw new Error("権限がありません");
   return user;
+}
+
+/** 項目がオフならメッセージを返す(管理者は管理のため常に操作可) */
+async function benefitOffError(
+  user: { role: string },
+  key: BenefitKey,
+): Promise<string | null> {
+  if (user.role === "ADMIN") return null;
+  const toggles = await getBenefitToggles();
+  if (toggles[key]) return null;
+  const label = BENEFIT_ITEMS.find((b) => b.key === key)?.label ?? "この機能";
+  return benefitUnavailableMessage(label);
 }
 
 function revalidateAll() {
@@ -96,6 +110,8 @@ export async function submitExpense(
   formData: FormData,
 ): Promise<ExpenseFormState> {
   const user = await requireUser();
+  const offError = await benefitOffError(user, "expense");
+  if (offError) return { error: offError };
   const parsed = expenseSchema.safeParse({
     title: formData.get("title"),
     amount: formData.get("amount"),
@@ -191,6 +207,8 @@ export async function submitMeal(
   formData: FormData,
 ): Promise<MealFormState> {
   const user = await requireUser();
+  const offError = await benefitOffError(user, "meal");
+  if (offError) return { error: offError };
   const parsed = mealSchema.safeParse({
     date: formData.get("date"),
     amount: formData.get("amount"),
