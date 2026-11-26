@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
+import { UserDirectory } from "./UserDirectory";
 
 export default async function AuditPage() {
   const user = await requireUser();
@@ -15,8 +16,17 @@ export default async function AuditPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-bold">監査ログ</h1>
+        <h1 className="text-2xl font-bold">監査</h1>
         <p className="text-sm text-gray-500 mt-1">
+          全ユーザーの情報と操作履歴(管理者のみ閲覧可)
+        </p>
+      </div>
+
+      <UserDirectory />
+
+      <div>
+        <h2 className="text-lg font-bold">操作ログ</h2>
+        <p className="text-sm text-gray-500 mt-0.5">
           全ユーザーの操作履歴(最新300件)
         </p>
       </div>
