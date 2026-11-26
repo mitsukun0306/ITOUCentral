@@ -7,6 +7,8 @@ import {
   mealAllowanceForMonth,
   taskAmount,
   lateInfo,
+  deductionsForMonth,
+  sumDeductions,
 } from "@/lib/payroll";
 import { jstYearMonth } from "@/lib/format";
 import { AdminPayroll } from "./AdminPayroll";
@@ -29,6 +31,16 @@ export default async function PayrollPage({
       where: { active: true },
       orderBy: { name: "asc" },
     });
+    // この月の天引き(無効化されたメンバー分も一覧には出す)
+    const deductions = await prisma.payrollDeduction.findMany({
+      where: { year, month },
+      include: { user: { select: { name: true } } },
+      orderBy: [{ createdAt: "asc" }],
+    });
+    const deductionByUser = new Map<string, number>();
+    for (const d of deductions) {
+      deductionByUser.set(d.userId, (deductionByUser.get(d.userId) ?? 0) + d.amount);
+    }
 
     const rows = await Promise.all(
       members.map(async (m) => {
@@ -53,6 +65,7 @@ export default async function PayrollPage({
           computedAmount: computed,
           status: saved?.status ?? null,
           note: saved?.note ?? null,
+          deduction: deductionByUser.get(m.id) ?? 0,
         };
       }),
     );
@@ -63,6 +76,17 @@ export default async function PayrollPage({
         month={month}
         defaultMethod={setting.defaultPayrollMethod}
         rows={rows}
+        members={members.map((m) => ({ id: m.id, name: m.name }))}
+        deductions={deductions.map((d) => ({
+          id: d.id,
+          userId: d.userId,
+          userName: d.user.name,
+          year: d.year,
+          month: d.month,
+          label: d.label,
+          amount: d.amount,
+          note: d.note,
+        }))}
       />
     );
   }
@@ -80,6 +104,7 @@ export default async function PayrollPage({
     setting.defaultPayrollMethod,
   );
   const { tasks } = await computePayroll(user.id, year, month, method);
+  const deductions = await deductionsForMonth(user.id, year, month);
 
   return (
     <MemberPayroll
@@ -89,6 +114,13 @@ export default async function PayrollPage({
       amount={payout.amount}
       status={payout.status}
       note={saved?.note ?? null}
+      deductionTotal={sumDeductions(deductions)}
+      deductions={deductions.map((d) => ({
+        id: d.id,
+        label: d.label,
+        amount: d.amount,
+        note: d.note,
+      }))}
       tasks={tasks.map((t) => {
         const late = lateInfo(t);
         const base = taskAmount(t, method);
