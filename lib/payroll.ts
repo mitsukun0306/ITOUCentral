@@ -3,6 +3,7 @@ import { toJstDateInput } from "@/lib/format";
 import { rankFor, MEAL_LIMIT, type RankKey } from "@/lib/rank";
 import type { BenefitToggles } from "@/lib/benefits";
 import type {
+  PayrollDeduction,
   PayrollMethod,
   PayrollStatus,
   Task,
@@ -234,4 +235,30 @@ export async function memberMonthlyPayout(
     status: saved?.status ?? null,
     method,
   };
+}
+
+/** 指定ユーザー・対象給与月の天引き一覧(登録順) */
+export async function deductionsForMonth(
+  userId: string,
+  year: number,
+  month: number,
+): Promise<PayrollDeduction[]> {
+  return prisma.payrollDeduction.findMany({
+    where: { userId, year, month },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+/** 天引き額の合計 */
+export function sumDeductions(items: { amount: number }[]): number {
+  return items.reduce((s, d) => s + d.amount, 0);
+}
+
+/**
+ * 支給額(天引き前)から天引きを差し引いた差引支給額。
+ * 給与レコードの amount は天引き前の報酬額のまま保持し(ランク判定などの実績に使う)、
+ * 天引きは表示・支払い時に差し引く。
+ */
+export function netPay(gross: number, deduction: number): number {
+  return gross - deduction;
 }

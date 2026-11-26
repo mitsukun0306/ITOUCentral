@@ -1,5 +1,5 @@
 import { MonthNav } from "@/components/MonthNav";
-import { PAYROLL_METHOD_LABEL } from "@/lib/payroll";
+import { PAYROLL_METHOD_LABEL, netPay } from "@/lib/payroll";
 import { yen } from "@/lib/format";
 import type { PayrollMethod } from "@/lib/generated/prisma";
 
@@ -13,6 +13,13 @@ type TaskRow = {
   penaltyLabel: string | null;
 };
 
+type DeductionRow = {
+  id: string;
+  label: string;
+  amount: number;
+  note: string | null;
+};
+
 export function MemberPayroll({
   year,
   month,
@@ -20,6 +27,8 @@ export function MemberPayroll({
   amount,
   status,
   note,
+  deductionTotal,
+  deductions,
   tasks,
 }: {
   year: number;
@@ -28,8 +37,11 @@ export function MemberPayroll({
   amount: number;
   status: string | null;
   note: string | null;
+  deductionTotal: number;
+  deductions: DeductionRow[];
   tasks: TaskRow[];
 }) {
+  const net = netPay(amount, deductionTotal);
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between flex-wrap gap-3">
@@ -50,12 +62,60 @@ export function MemberPayroll({
             </span>
           )}
         </p>
-        <p className="text-4xl font-bold text-brand mt-2">{yen(amount)}</p>
+        <p className="text-4xl font-bold text-brand mt-2">{yen(net)}</p>
+        {deductionTotal > 0 && (
+          <p className="text-sm text-gray-500 mt-2">
+            報酬 {yen(amount)}
+            <span className="text-red-600 ml-2">
+              − 天引き {yen(deductionTotal)}
+            </span>
+            <span className="ml-2">= 差引支給額 {yen(net)}</span>
+          </p>
+        )}
         <p className="text-xs text-gray-400 mt-2">
           計算方式: {PAYROLL_METHOD_LABEL[method]}
         </p>
         {note && <p className="text-sm text-gray-600 mt-2">備考: {note}</p>}
       </div>
+
+      {deductions.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100">
+            <h2 className="font-semibold">天引き</h2>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-gray-400 border-b border-gray-100">
+                <th className="px-4 py-2 font-medium">項目</th>
+                <th className="px-4 py-2 font-medium text-right">天引き額</th>
+              </tr>
+            </thead>
+            <tbody>
+              {deductions.map((d) => (
+                <tr key={d.id} className="border-b border-gray-50">
+                  <td className="px-4 py-2">
+                    {d.label}
+                    {d.note && (
+                      <span className="block text-[11px] text-gray-400 mt-0.5">
+                        {d.note}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-right font-medium text-red-600 whitespace-nowrap">
+                    −{yen(d.amount)}
+                  </td>
+                </tr>
+              ))}
+              <tr className="bg-gray-50 font-semibold">
+                <td className="px-4 py-2">合計</td>
+                <td className="px-4 py-2 text-right text-red-600">
+                  −{yen(deductionTotal)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {method !== "MONTHLY_MANUAL" && (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
